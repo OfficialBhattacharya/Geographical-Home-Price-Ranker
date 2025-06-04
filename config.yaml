@@ -1,0 +1,69 @@
+# FRED Data Processing Pipeline Configuration
+
+# API Configuration
+api:
+  fred_api_key: "YOUR_FRED_API_KEY_HERE"  # Replace with your actual FRED API key
+
+# Directory Paths
+paths:
+  # Root directory of the project
+  project_root: "D:/Geographical-Home-Price-Ranker"
+  
+  # Directory for raw FRED CSV files
+  raw_data_dir: "D:/Geographical-Home-Price-Ranker/AllFredFiles"
+  
+  # Directory for processed/unified files
+  processed_data_dir: "D:/Geographical-Home-Price-Ranker/AllProcessedFiles"
+  
+  # Input files
+  fred_series_file: "allFredSeries.txt"
+  
+  # Output files
+  unified_data_file: "unified_monthly_data.csv"
+
+# Data Processing Settings
+processing:
+  # Date range for interpolation
+  start_date: "1990-01-01"
+  
+  # Default end date (can be overridden by user input)
+  default_end_date: "2025-01-01"
+  
+  # Frequency detection settings
+  frequency_thresholds:
+    monthly_max_days: 35
+    quarterly_min_days: 80
+    quarterly_max_days: 100
+    annual_min_days: 350
+
+# File Settings
+files:
+  # CSV output settings
+  csv_encoding: "utf-8"
+  date_format: "%Y-%m-%d"
+  
+  # Backup settings
+  create_backups: true
+  backup_suffix: "_backup"
+
+# Error Handling
+error_handling:
+  # Maximum retries for API calls
+  max_retries: 3
+  
+  # Timeout for API requests (seconds)
+  api_timeout: 30
+  
+  # Continue processing even if some series fail
+  continue_on_error: true
+
+# Logging
+logging:
+  # Log level: DEBUG, INFO, WARNING, ERROR
+  level: "INFO"
+  
+  # Whether to create log files
+  create_log_files: false
+  
+  # Log file directory (if create_log_files is true)
+  log_dir: "logs" 
