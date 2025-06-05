@@ -937,11 +937,11 @@ def plotResults(results, output_path=None):
     
     # Set up the plotting style
     plt.style.use('seaborn-v0_8')
-    fig, axes = plt.subplots(2, 3, figsize=(20, 12))
+    fig, axes = plt.subplots(1, 3, figsize=(20, 6))
     fig.suptitle('Model Performance Analysis', fontsize=16, fontweight='bold')
     
     # 1. Time-Series Plot: Actual vs Predicted over Time
-    ax1 = axes[0, 0]
+    ax1 = axes[0]
     
     if results['train_dates'] is not None and results['test_dates'] is not None:
         # Plot training period (actual vs predicted)
@@ -990,7 +990,7 @@ def plotResults(results, output_path=None):
         logger.warning("Date information not available for time-series plot")
     
     # 2. Training Actual vs Predicted Scatter
-    ax2 = axes[0, 1]
+    ax2 = axes[1]
     ax2.scatter(results['y_train'], results['train_predictions'], alpha=0.6, s=20)
     
     # Perfect prediction line
@@ -1010,7 +1010,7 @@ def plotResults(results, output_path=None):
              bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
     
     # 3. Residuals plot
-    ax3 = axes[0, 2]
+    ax3 = axes[2]
     residuals = results['y_train'] - results['train_predictions']
     ax3.scatter(results['train_predictions'], residuals, alpha=0.6, s=20)
     ax3.axhline(y=0, color='r', linestyle='--')
@@ -1018,103 +1018,6 @@ def plotResults(results, output_path=None):
     ax3.set_ylabel('Residuals')
     ax3.set_title('Residuals Plot')
     ax3.grid(True, alpha=0.3)
-    
-    # 4. Model comparison
-    ax4 = axes[1, 0]
-    model_names = list(results['model_scores'].keys())
-    model_scores = list(results['model_scores'].values())
-    
-    bars = ax4.bar(model_names, model_scores)
-    ax4.set_ylabel('Cross-Validation MSE')
-    ax4.set_title('Model Performance Comparison')
-    ax4.tick_params(axis='x', rotation=45)
-    
-    # Color the best model differently
-    if model_scores:
-        min_score_idx = model_scores.index(min(model_scores))
-        bars[min_score_idx].set_color('green')
-    
-    # 5. Feature importance (if available) - Updated for meta learner
-    ax5 = axes[1, 1]
-    
-    try:
-        # For neural network meta learner, show individual model importance instead
-        if 'model_weights' in results and results['model_weights']:
-            model_names = list(results['model_weights'].keys())
-            weights = list(results['model_weights'].values())
-            
-            bars = ax5.bar(model_names, weights)
-            ax5.set_ylabel('Approximate Model Weight')
-            ax5.set_xlabel('Models')
-            ax5.set_title('Neural Network Meta Learner Weights')
-            ax5.tick_params(axis='x', rotation=45)
-            
-            # Color bars based on weight (high weight = red, low weight = green)
-            max_weight = max(weights)
-            for i, (bar, weight) in enumerate(zip(bars, weights)):
-                if weight == max_weight:
-                    bar.set_color('red' if weight > 0.7 else 'orange')
-                else:
-                    bar.set_color('lightblue')
-            
-            # Add weight values on top of bars
-            for i, (bar, weight) in enumerate(zip(bars, weights)):
-                ax5.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01,
-                        f'{weight:.3f}', ha='center', va='bottom', fontsize=9)
-                        
-        else:
-            # Try to get feature importance from individual models as fallback
-            importances = None
-            tree_models = []
-            
-            for name, model in results['individual_models'].items():
-                try:
-                    # Check if it's a GridSearchCV object
-                    actual_model = model.best_estimator_ if hasattr(model, 'best_estimator_') else model
-                    
-                    if hasattr(actual_model, 'feature_importances_'):
-                        tree_models.append(actual_model.feature_importances_)
-                except:
-                    continue
-            
-            if tree_models:
-                importances = np.mean(tree_models, axis=0)
-                feature_names = results['features_used']
-                importance_df = pd.DataFrame({
-                    'feature': feature_names,
-                    'importance': importances
-                }).sort_values('importance', ascending=True)
-                
-                # Plot top 15 features
-                top_features = importance_df.tail(15)
-                ax5.barh(range(len(top_features)), top_features['importance'])
-                ax5.set_yticks(range(len(top_features)))
-                ax5.set_yticklabels(top_features['feature'])
-                ax5.set_xlabel('Average Feature Importance')
-                ax5.set_title('Top 15 Feature Importances (Base Models)')
-            else:
-                ax5.text(0.5, 0.5, 'Model weights and\nfeature importance\nnot available', 
-                        ha='center', va='center', transform=ax5.transAxes)
-                ax5.set_title('Model Analysis')
-            
-    except Exception as e:
-        logger.warning(f"Could not plot model weights/feature importance: {str(e)}")
-        ax5.text(0.5, 0.5, 'Model weights\nplot failed', 
-                ha='center', va='center', transform=ax5.transAxes)
-        ax5.set_title('Model Weights')
-    
-    # 6. Prediction Distribution
-    ax6 = axes[1, 2]
-    
-    # Plot distribution of training predictions vs actuals
-    ax6.hist(results['y_train'], alpha=0.7, bins=30, label='Actual', density=True)
-    ax6.hist(results['train_predictions'], alpha=0.7, bins=30, label='Predicted (Train)', density=True)
-    ax6.hist(results['test_predictions'], alpha=0.7, bins=30, label='Predicted (Test)', density=True)
-    ax6.set_xlabel('Values')
-    ax6.set_ylabel('Density')
-    ax6.set_title('Distribution of Values')
-    ax6.legend()
-    ax6.grid(True, alpha=0.3)
     
     plt.tight_layout()
     
