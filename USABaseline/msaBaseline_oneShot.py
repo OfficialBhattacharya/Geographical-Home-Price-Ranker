@@ -1341,6 +1341,278 @@ def getRegionSummary(region):
     
     return summary
 
+def predictTimeWindow(region, start_date, end_date, plot_results=True, save_plot=False, output_dir=None):
+    """
+    Use the trained model to predict values for a specific time window and plot fitted vs actual.
+    
+    Parameters:
+    - region: Region identifier
+    - start_date: Start date for prediction window (YYYY-MM-DD format)
+    - end_date: End date for prediction window (YYYY-MM-DD format)
+    - plot_results: Whether to create plots (default: True)
+    - save_plot: Whether to save the plot (default: False)
+    - output_dir: Directory to save plot (if save_plot=True)
+    
+    Returns:
+    - prediction_results: Dictionary with predictions and metrics for the time window
+    """
+    if region not in REGION_RESULTS:
+        print(f"❌ No results found for region: {region}")
+        print(f"Available regions: {list(REGION_RESULTS.keys())}")
+        return None
+    
+    results = REGION_RESULTS[region]
+    
+    if results is None:
+        print(f"❌ Region {region} was skipped during processing")
+        return None
+    
+    logger.info(f"Predicting time window {start_date} to {end_date} for region: {region}")
+    print(f"Predicting time window {start_date} to {end_date} for region: {region}")
+    
+    try:
+        # Parse dates
+        start_dt = pd.to_datetime(start_date)
+        end_dt = pd.to_datetime(end_date)
+        
+        # Get the original data for this region
+        region_data = results['original_data'].copy()
+        date_col = results['date_column']
+        
+        # Filter data for the specified time window
+        mask = (region_data[date_col] >= start_dt) & (region_data[date_col] <= end_dt)
+        window_data = region_data[mask].copy()
+        
+        if len(window_data) == 0:
+            print(f"❌ No data found for the specified time window {start_date} to {end_date}")
+            return None
+        
+        print(f"✓ Found {len(window_data)} data points in the specified time window")
+        
+        # Get the features used in training
+        features_used = results['features_used']
+        target_col = results['target_column']
+        
+        # Check if we have the target values for this window (for comparison)
+        has_actual_values = target_col in window_data.columns and window_data[target_col].notna().any()
+        
+        # Prepare features for prediction
+        X_window = window_data[features_used].copy()
+        
+        # Handle any missing values in features (use same approach as training)
+        for col in features_used:
+            if X_window[col].isnull().any():
+                X_window[col] = X_window[col].fillna(X_window[col].median())
+        
+        # Apply the same transformations used in training
+        scaler = results['scaler']
+        if scaler is not None:
+            X_window_scaled = X_window.copy()
+            X_window_scaled[features_used] = scaler.transform(X_window_scaled[features_used])
+        else:
+            X_window_scaled = X_window.copy()
+        
+        # Make predictions using the trained meta learner
+        meta_learner = results['meta_learner']
+        individual_models = results['individual_models']
+        
+        # Get base model predictions first
+        base_predictions = []
+        for name, model in individual_models.items():
+            try:
+                if hasattr(model, 'predict'):
+                    pred = model.predict(X_window_scaled[features_used])
+                else:
+                    # For GridSearchCV objects
+                    pred = model.best_estimator_.predict(X_window_scaled[features_used])
+                base_predictions.append(pred)
+            except Exception as e:
+                logger.warning(f"Error getting predictions from {name}: {str(e)}")
+        
+        if len(base_predictions) == 0:
+            print("❌ Could not get predictions from any base models")
+            return None
+        
+        # Stack base predictions for meta learner
+        meta_X = np.column_stack(base_predictions)
+        
+        # Get final predictions from meta learner
+        final_predictions = meta_learner.predict(meta_X)
+        
+        # Prepare results
+        prediction_results = {
+            'region': region,
+            'time_window': (start_date, end_date),
+            'dates': window_data[date_col],
+            'predictions': final_predictions,
+            'features_used': features_used,
+            'data_points': len(window_data)
+        }
+        
+        # Add actual values if available
+        if has_actual_values:
+            actual_values = window_data[target_col].values
+            # Filter out NaN values for metrics calculation
+            valid_mask = ~np.isnan(actual_values)
+            if valid_mask.any():
+                valid_actual = actual_values[valid_mask]
+                valid_pred = final_predictions[valid_mask]
+                
+                # Calculate metrics
+                mse = mean_squared_error(valid_actual, valid_pred)
+                r2 = r2_score(valid_actual, valid_pred)
+                mae = mean_absolute_error(valid_actual, valid_pred)
+                
+                prediction_results['actual_values'] = actual_values
+                prediction_results['metrics'] = {
+                    'mse': mse,
+                    'r2': r2,
+                    'mae': mae,
+                    'valid_points': len(valid_actual)
+                }
+                
+                print(f"✓ Time window metrics - R²: {r2:.4f}, MSE: {mse:.4f}, MAE: {mae:.4f}")
+            else:
+                prediction_results['actual_values'] = actual_values
+                prediction_results['metrics'] = None
+                print("⚠️  No valid actual values found for metrics calculation")
+        else:
+            prediction_results['actual_values'] = None
+            prediction_results['metrics'] = None
+            print("ℹ️  No actual values available for comparison")
+        
+        # Create plots if requested
+        if plot_results:
+            plt.style.use('seaborn-v0_8')
+            
+            if has_actual_values and prediction_results['metrics'] is not None:
+                # Create 2x2 subplot if we have actual values
+                fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+                fig.suptitle(f'Time Window Prediction Analysis - Region: {region}\n{start_date} to {end_date}', 
+                           fontsize=14, fontweight='bold')
+                
+                # 1. Time series plot
+                ax1 = axes[0, 0]
+                dates = pd.to_datetime(prediction_results['dates'])
+                ax1.plot(dates, actual_values, 'b-', label='Actual', linewidth=2, alpha=0.8)
+                ax1.plot(dates, final_predictions, 'r--', label='Predicted', linewidth=2, alpha=0.8)
+                ax1.set_xlabel('Date')
+                ax1.set_ylabel('Target Values')
+                ax1.set_title('Time Series: Actual vs Predicted')
+                ax1.legend()
+                ax1.grid(True, alpha=0.3)
+                ax1.tick_params(axis='x', rotation=45)
+                
+                # Add metrics
+                metrics = prediction_results['metrics']
+                textstr = f'R² = {metrics["r2"]:.3f}\nMSE = {metrics["mse"]:.2f}\nMAE = {metrics["mae"]:.2f}'
+                props = dict(boxstyle='round', facecolor='white', alpha=0.8)
+                ax1.text(0.02, 0.98, textstr, transform=ax1.transAxes, fontsize=9,
+                        verticalalignment='top', bbox=props)
+                
+                # 2. Scatter plot
+                ax2 = axes[0, 1]
+                valid_mask = ~np.isnan(actual_values)
+                if valid_mask.any():
+                    valid_actual = actual_values[valid_mask]
+                    valid_pred = final_predictions[valid_mask]
+                    ax2.scatter(valid_actual, valid_pred, alpha=0.6, s=30)
+                    
+                    # Perfect prediction line
+                    min_val = min(valid_actual.min(), valid_pred.min())
+                    max_val = max(valid_actual.max(), valid_pred.max())
+                    ax2.plot([min_val, max_val], [min_val, max_val], 'r--', lw=2, label='Perfect Prediction')
+                
+                ax2.set_xlabel('Actual Values')
+                ax2.set_ylabel('Predicted Values')
+                ax2.set_title('Scatter: Actual vs Predicted')
+                ax2.legend()
+                ax2.grid(True, alpha=0.3)
+                
+                # 3. Residuals plot
+                ax3 = axes[1, 0]
+                if valid_mask.any():
+                    residuals = valid_actual - valid_pred
+                    ax3.scatter(valid_pred, residuals, alpha=0.6, s=30)
+                    ax3.axhline(y=0, color='r', linestyle='--')
+                ax3.set_xlabel('Predicted Values')
+                ax3.set_ylabel('Residuals')
+                ax3.set_title('Residuals Plot')
+                ax3.grid(True, alpha=0.3)
+                
+                # 4. Prediction distribution
+                ax4 = axes[1, 1]
+                ax4.hist(final_predictions, bins=20, alpha=0.7, color='red', label='Predicted', density=True)
+                if valid_mask.any():
+                    ax4.hist(valid_actual, bins=20, alpha=0.7, color='blue', label='Actual', density=True)
+                ax4.set_xlabel('Values')
+                ax4.set_ylabel('Density')
+                ax4.set_title('Distribution Comparison')
+                ax4.legend()
+                ax4.grid(True, alpha=0.3)
+                
+            else:
+                # Create single plot if no actual values
+                fig, ax = plt.subplots(1, 1, figsize=(12, 6))
+                fig.suptitle(f'Time Window Predictions - Region: {region}\n{start_date} to {end_date}', 
+                           fontsize=14, fontweight='bold')
+                
+                dates = pd.to_datetime(prediction_results['dates'])
+                ax.plot(dates, final_predictions, 'g-', label='Predicted', linewidth=2, alpha=0.8)
+                ax.set_xlabel('Date')
+                ax.set_ylabel('Predicted Values')
+                ax.set_title('Time Series: Predictions')
+                ax.legend()
+                ax.grid(True, alpha=0.3)
+                ax.tick_params(axis='x', rotation=45)
+                
+                # Add prediction stats
+                pred_stats = f'Mean: {final_predictions.mean():.2f}\nStd: {final_predictions.std():.2f}\nMin: {final_predictions.min():.2f}\nMax: {final_predictions.max():.2f}'
+                props = dict(boxstyle='round', facecolor='white', alpha=0.8)
+                ax.text(0.02, 0.98, pred_stats, transform=ax.transAxes, fontsize=9,
+                       verticalalignment='top', bbox=props)
+            
+            plt.tight_layout()
+            
+            # Save plot if requested
+            if save_plot and output_dir:
+                plot_filename = f"timewindow_{region}_{start_date}_{end_date}_predictions.png"
+                plot_path = f"{output_dir}/{plot_filename}"
+                plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+                logger.info(f"Plot saved to: {plot_path}")
+                print(f"✓ Plot saved to: {plot_path}")
+            
+            plt.show()
+        
+        # Print summary
+        print(f"\n{'='*60}")
+        print(f"TIME WINDOW PREDICTION SUMMARY")
+        print(f"{'='*60}")
+        print(f"Region: {region}")
+        print(f"Time Window: {start_date} to {end_date}")
+        print(f"Data Points: {len(window_data)}")
+        print(f"Features Used: {len(features_used)}")
+        print(f"Prediction Range: {final_predictions.min():.2f} to {final_predictions.max():.2f}")
+        print(f"Prediction Mean: {final_predictions.mean():.2f}")
+        
+        if prediction_results['metrics']:
+            print(f"\nAccuracy Metrics:")
+            metrics = prediction_results['metrics']
+            print(f"  R²: {metrics['r2']:.4f}")
+            print(f"  MSE: {metrics['mse']:.4f}")
+            print(f"  MAE: {metrics['mae']:.4f}")
+            print(f"  Valid Points: {metrics['valid_points']}")
+        
+        logger.info(f"Time window prediction complete for region {region}")
+        print("✓ Time window prediction complete")
+        
+        return prediction_results
+        
+    except Exception as e:
+        logger.error(f"Error in predictTimeWindow: {str(e)}")
+        print(f"❌ Error in time window prediction: {str(e)}")
+        return None
+
 def saveRegionwiseResults(output_path, cfg):
     """
     Save all region-wise results to CSV files.
@@ -1477,6 +1749,10 @@ def main():
             print("To analyze results for a specific region, use:")
             print("  plotRegionResults('REGION_NAME')")
             print("  getRegionSummary('REGION_NAME')")
+            print("  predictTimeWindow('REGION_NAME', 'START_DATE', 'END_DATE')")
+            print("\nExamples:")
+            print("  plotRegionResults('MSA_12345')")
+            print("  predictTimeWindow('MSA_12345', '2020-01-01', '2020-12-31')")
             print(f"\nAvailable regions: {list(REGION_RESULTS.keys())[:5]}{'...' if len(REGION_RESULTS) > 5 else ''}")
         else:
             print("❌ No regions were successfully processed")
@@ -1696,6 +1972,7 @@ def run_dummy_example():
         print("Run the following commands:")
         print(f"  plotRegionResults('{example_region}')")
         print(f"  getRegionSummary('{example_region}')")
+        print(f"  predictTimeWindow('{example_region}', '2020-01-01', '2020-12-31')")
         print(f"\nAvailable regions: {list(REGION_RESULTS.keys())}")
         
     else:

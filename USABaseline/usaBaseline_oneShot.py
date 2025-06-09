@@ -23,6 +23,9 @@ logger = logging.getLogger(__name__)
 
 warnings.filterwarnings('ignore')
 
+# Global variable to store USA baseline results
+USA_RESULTS = {}
+
 class CFG:
     """
     General configuration class for data and model setup.
@@ -1052,12 +1055,279 @@ def plotResults(results, output_path=None):
     logger.info("Plotting complete")
     print("✓ Results plotting complete")
 
+def predictTimeWindow(start_date, end_date, plot_results=True, save_plot=False, output_dir=None):
+    """
+    Use the trained USA baseline model to predict values for a specific time window and plot fitted vs actual.
+    
+    Parameters:
+    - start_date: Start date for prediction window (YYYY-MM-DD format)
+    - end_date: End date for prediction window (YYYY-MM-DD format)
+    - plot_results: Whether to create plots (default: True)
+    - save_plot: Whether to save the plot (default: False)
+    - output_dir: Directory to save plot (if save_plot=True)
+    
+    Returns:
+    - prediction_results: Dictionary with predictions and metrics for the time window
+    """
+    global USA_RESULTS
+    
+    if not USA_RESULTS:
+        print("❌ No USA baseline results found. Please run the main pipeline first.")
+        return None
+    
+    results = USA_RESULTS
+    
+    logger.info(f"Predicting time window {start_date} to {end_date} for USA baseline")
+    print(f"Predicting time window {start_date} to {end_date} for USA baseline")
+    
+    try:
+        # Parse dates
+        start_dt = pd.to_datetime(start_date)
+        end_dt = pd.to_datetime(end_date)
+        
+        # Get the original data
+        usa_data = results['original_data'].copy()
+        date_col = results['date_column']
+        
+        # Filter data for the specified time window
+        mask = (usa_data[date_col] >= start_dt) & (usa_data[date_col] <= end_dt)
+        window_data = usa_data[mask].copy()
+        
+        if len(window_data) == 0:
+            print(f"❌ No data found for the specified time window {start_date} to {end_date}")
+            return None
+        
+        print(f"✓ Found {len(window_data)} data points in the specified time window")
+        
+        # Get the features used in training
+        features_used = results['features_used']
+        target_col = results['target_column']
+        
+        # Check if we have the target values for this window (for comparison)
+        has_actual_values = target_col in window_data.columns and window_data[target_col].notna().any()
+        
+        # Prepare features for prediction
+        X_window = window_data[features_used].copy()
+        
+        # Handle any missing values in features (use same approach as training)
+        for col in features_used:
+            if X_window[col].isnull().any():
+                X_window[col] = X_window[col].fillna(X_window[col].median())
+        
+        # Apply the same transformations used in training
+        scaler = results['scaler']
+        if scaler is not None:
+            X_window_scaled = X_window.copy()
+            X_window_scaled[features_used] = scaler.transform(X_window_scaled[features_used])
+        else:
+            X_window_scaled = X_window.copy()
+        
+        # Make predictions using the trained meta learner
+        meta_learner = results['meta_learner']
+        individual_models = results['individual_models']
+        
+        # Get base model predictions first
+        base_predictions = []
+        for name, model in individual_models.items():
+            try:
+                if hasattr(model, 'predict'):
+                    pred = model.predict(X_window_scaled[features_used])
+                else:
+                    # For GridSearchCV objects
+                    pred = model.best_estimator_.predict(X_window_scaled[features_used])
+                base_predictions.append(pred)
+            except Exception as e:
+                logger.warning(f"Error getting predictions from {name}: {str(e)}")
+        
+        if len(base_predictions) == 0:
+            print("❌ Could not get predictions from any base models")
+            return None
+        
+        # Stack base predictions for meta learner
+        meta_X = np.column_stack(base_predictions)
+        
+        # Get final predictions from meta learner
+        final_predictions = meta_learner.predict(meta_X)
+        
+        # Prepare results
+        prediction_results = {
+            'time_window': (start_date, end_date),
+            'dates': window_data[date_col],
+            'predictions': final_predictions,
+            'features_used': features_used,
+            'data_points': len(window_data)
+        }
+        
+        # Add actual values if available
+        if has_actual_values:
+            actual_values = window_data[target_col].values
+            # Filter out NaN values for metrics calculation
+            valid_mask = ~np.isnan(actual_values)
+            if valid_mask.any():
+                valid_actual = actual_values[valid_mask]
+                valid_pred = final_predictions[valid_mask]
+                
+                # Calculate metrics
+                mse = mean_squared_error(valid_actual, valid_pred)
+                r2 = r2_score(valid_actual, valid_pred)
+                mae = mean_absolute_error(valid_actual, valid_pred)
+                
+                prediction_results['actual_values'] = actual_values
+                prediction_results['metrics'] = {
+                    'mse': mse,
+                    'r2': r2,
+                    'mae': mae,
+                    'valid_points': len(valid_actual)
+                }
+                
+                print(f"✓ Time window metrics - R²: {r2:.4f}, MSE: {mse:.4f}, MAE: {mae:.4f}")
+            else:
+                prediction_results['actual_values'] = actual_values
+                prediction_results['metrics'] = None
+                print("⚠️  No valid actual values found for metrics calculation")
+        else:
+            prediction_results['actual_values'] = None
+            prediction_results['metrics'] = None
+            print("ℹ️  No actual values available for comparison")
+        
+        # Create plots if requested
+        if plot_results:
+            plt.style.use('seaborn-v0_8')
+            
+            if has_actual_values and prediction_results['metrics'] is not None:
+                # Create 2x2 subplot if we have actual values
+                fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+                fig.suptitle(f'USA Baseline - Time Window Prediction Analysis\n{start_date} to {end_date}', 
+                           fontsize=14, fontweight='bold')
+                
+                # 1. Time series plot
+                ax1 = axes[0, 0]
+                dates = pd.to_datetime(prediction_results['dates'])
+                ax1.plot(dates, actual_values, 'b-', label='Actual', linewidth=2, alpha=0.8)
+                ax1.plot(dates, final_predictions, 'r--', label='Predicted', linewidth=2, alpha=0.8)
+                ax1.set_xlabel('Date')
+                ax1.set_ylabel('Target Values')
+                ax1.set_title('Time Series: Actual vs Predicted')
+                ax1.legend()
+                ax1.grid(True, alpha=0.3)
+                ax1.tick_params(axis='x', rotation=45)
+                
+                # Add metrics
+                metrics = prediction_results['metrics']
+                textstr = f'R² = {metrics["r2"]:.3f}\nMSE = {metrics["mse"]:.2f}\nMAE = {metrics["mae"]:.2f}'
+                props = dict(boxstyle='round', facecolor='white', alpha=0.8)
+                ax1.text(0.02, 0.98, textstr, transform=ax1.transAxes, fontsize=9,
+                        verticalalignment='top', bbox=props)
+                
+                # 2. Scatter plot
+                ax2 = axes[0, 1]
+                valid_mask = ~np.isnan(actual_values)
+                if valid_mask.any():
+                    valid_actual = actual_values[valid_mask]
+                    valid_pred = final_predictions[valid_mask]
+                    ax2.scatter(valid_actual, valid_pred, alpha=0.6, s=30)
+                    
+                    # Perfect prediction line
+                    min_val = min(valid_actual.min(), valid_pred.min())
+                    max_val = max(valid_actual.max(), valid_pred.max())
+                    ax2.plot([min_val, max_val], [min_val, max_val], 'r--', lw=2, label='Perfect Prediction')
+                
+                ax2.set_xlabel('Actual Values')
+                ax2.set_ylabel('Predicted Values')
+                ax2.set_title('Scatter: Actual vs Predicted')
+                ax2.legend()
+                ax2.grid(True, alpha=0.3)
+                
+                # 3. Residuals plot
+                ax3 = axes[1, 0]
+                if valid_mask.any():
+                    residuals = valid_actual - valid_pred
+                    ax3.scatter(valid_pred, residuals, alpha=0.6, s=30)
+                    ax3.axhline(y=0, color='r', linestyle='--')
+                ax3.set_xlabel('Predicted Values')
+                ax3.set_ylabel('Residuals')
+                ax3.set_title('Residuals Plot')
+                ax3.grid(True, alpha=0.3)
+                
+                # 4. Prediction distribution
+                ax4 = axes[1, 1]
+                ax4.hist(final_predictions, bins=20, alpha=0.7, color='red', label='Predicted', density=True)
+                if valid_mask.any():
+                    ax4.hist(valid_actual, bins=20, alpha=0.7, color='blue', label='Actual', density=True)
+                ax4.set_xlabel('Values')
+                ax4.set_ylabel('Density')
+                ax4.set_title('Distribution Comparison')
+                ax4.legend()
+                ax4.grid(True, alpha=0.3)
+                
+            else:
+                # Create single plot if no actual values
+                fig, ax = plt.subplots(1, 1, figsize=(12, 6))
+                fig.suptitle(f'USA Baseline - Time Window Predictions\n{start_date} to {end_date}', 
+                           fontsize=14, fontweight='bold')
+                
+                dates = pd.to_datetime(prediction_results['dates'])
+                ax.plot(dates, final_predictions, 'g-', label='Predicted', linewidth=2, alpha=0.8)
+                ax.set_xlabel('Date')
+                ax.set_ylabel('Predicted Values')
+                ax.set_title('Time Series: Predictions')
+                ax.legend()
+                ax.grid(True, alpha=0.3)
+                ax.tick_params(axis='x', rotation=45)
+                
+                # Add prediction stats
+                pred_stats = f'Mean: {final_predictions.mean():.2f}\nStd: {final_predictions.std():.2f}\nMin: {final_predictions.min():.2f}\nMax: {final_predictions.max():.2f}'
+                props = dict(boxstyle='round', facecolor='white', alpha=0.8)
+                ax.text(0.02, 0.98, pred_stats, transform=ax.transAxes, fontsize=9,
+                       verticalalignment='top', bbox=props)
+            
+            plt.tight_layout()
+            
+            # Save plot if requested
+            if save_plot and output_dir:
+                plot_filename = f"usa_timewindow_{start_date}_{end_date}_predictions.png"
+                plot_path = f"{output_dir}/{plot_filename}"
+                plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+                logger.info(f"Plot saved to: {plot_path}")
+                print(f"✓ Plot saved to: {plot_path}")
+            
+            plt.show()
+        
+        # Print summary
+        print(f"\n{'='*60}")
+        print(f"USA BASELINE - TIME WINDOW PREDICTION SUMMARY")
+        print(f"{'='*60}")
+        print(f"Time Window: {start_date} to {end_date}")
+        print(f"Data Points: {len(window_data)}")
+        print(f"Features Used: {len(features_used)}")
+        print(f"Prediction Range: {final_predictions.min():.2f} to {final_predictions.max():.2f}")
+        print(f"Prediction Mean: {final_predictions.mean():.2f}")
+        
+        if prediction_results['metrics']:
+            print(f"\nAccuracy Metrics:")
+            metrics = prediction_results['metrics']
+            print(f"  R²: {metrics['r2']:.4f}")
+            print(f"  MSE: {metrics['mse']:.4f}")
+            print(f"  MAE: {metrics['mae']:.4f}")
+            print(f"  Valid Points: {metrics['valid_points']}")
+        
+        logger.info(f"Time window prediction complete for USA baseline")
+        print("✓ Time window prediction complete")
+        
+        return prediction_results
+        
+    except Exception as e:
+        logger.error(f"Error in predictTimeWindow: {str(e)}")
+        print(f"❌ Error in time window prediction: {str(e)}")
+        return None
 
 # Main execution function
 def main():
     """
     Main execution function that runs the entire pipeline.
     """
+    global USA_RESULTS
+    
     try:
         print("="*60)
         print("GEOGRAPHICAL HOME PRICE RANKER - USA BASELINE")
@@ -1099,6 +1369,14 @@ def main():
                                              cfg.featuresToUse, new_target_col, 
                                              cfg.AllModelsList, cfg.AllModelParams, cv_scheme, scaler, cfg.dateCol)
         
+        # Store results globally for time window predictions
+        USA_RESULTS.update(results)
+        USA_RESULTS['original_data'] = df_filled
+        USA_RESULTS['train_data'] = train_df
+        USA_RESULTS['test_data'] = test_df
+        USA_RESULTS['scaler'] = scaler
+        USA_RESULTS['transformers'] = transformers
+        
         # Step 11: Plot results
         plotResults(results, cfg.outputPath)
         
@@ -1112,6 +1390,16 @@ def main():
         logger.info(f"Results saved to: {cfg.outputPath}")
         print(f"✓ Final results saved to: {cfg.outputPath}")
         
+        print("\n" + "="*50)
+        print("USAGE INSTRUCTIONS")
+        print("="*50)
+        print("To analyze specific time windows, use:")
+        print("  predictTimeWindow('START_DATE', 'END_DATE')")
+        print("\nExamples:")
+        print("  predictTimeWindow('2020-01-01', '2020-12-31')")
+        print("  predictTimeWindow('2021-06-01', '2022-05-31')")
+        print("  predictTimeWindow('2019-01-01', '2019-12-31', save_plot=True, output_dir='./plots')")
+        
         print("\n" + "="*60)
         print("PIPELINE EXECUTION COMPLETE!")
         print("="*60)
@@ -1124,3 +1412,216 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+"""
+# ==============================================================================
+# DUMMY EXAMPLE USAGE (COMMENTED OUT)
+# ==============================================================================
+# 
+# Uncomment this section to run with dummy data for testing/demonstration
+# 
+import numpy as np
+import pandas as pd
+from datetime import datetime, timedelta
+
+def create_dummy_usa_data():
+    '''
+    Create dummy example data for testing the USA baseline script.
+    
+    Returns:
+    - df: Dummy dataframe with USA time series data
+    '''
+    print("Creating dummy USA example data...")
+    
+    # Create date range (5 years of monthly data)
+    start_date = datetime(2019, 1, 1)
+    end_date = datetime(2023, 12, 31)
+    dates = pd.date_range(start=start_date, end=end_date, freq='MS')
+    
+    # Initialize empty list to store data
+    data = []
+    
+    # Set USA baseline characteristics
+    base_price = 350000  # Base USA home price
+    growth_rate = 0.04   # Annual growth rate
+    volatility = 0.12    # Price volatility
+    
+    for i, date in enumerate(dates):
+        # Simulate time-dependent features
+        months_since_start = i
+        
+        # Target variable: Home price with trend and noise
+        trend_factor = (1 + growth_rate/12) ** months_since_start
+        noise = np.random.normal(0, volatility * base_price * 0.1)
+        seasonal_factor = 1 + 0.03 * np.sin(2 * np.pi * (date.month - 1) / 12)
+        home_price = base_price * trend_factor * seasonal_factor + noise
+        
+        # Feature variables (national economic indicators)
+        unemployment_rate = np.random.uniform(3, 8) + 2 * np.sin(2 * np.pi * months_since_start / 24)
+        interest_rate = np.random.uniform(2, 6) + np.sin(2 * np.pi * months_since_start / 36)
+        gdp_growth = np.random.uniform(-1, 4) + np.sin(2 * np.pi * months_since_start / 48)
+        inflation_rate = np.random.uniform(0, 4) + 0.5 * np.sin(2 * np.pi * months_since_start / 18)
+        population_growth = np.random.uniform(0.5, 2.0)
+        median_income = np.random.uniform(55000, 75000) * (1 + 0.025) ** (months_since_start / 12)
+        housing_starts = np.random.poisson(120) + 80
+        consumer_confidence = np.random.uniform(70, 130)
+        
+        # Add some correlation between features and target
+        unemployment_rate -= home_price / base_price * 0.3  # Lower unemployment in high-price periods
+        consumer_confidence += home_price / base_price * 10  # Higher confidence in high-price periods
+        
+        # Create row
+        row = {
+            'Date': date,
+            'home_price': home_price,
+            'unemployment_rate': unemployment_rate,
+            'interest_rate': interest_rate,
+            'gdp_growth': gdp_growth,
+            'inflation_rate': inflation_rate,
+            'population_growth': population_growth,
+            'median_income': median_income,
+            'housing_starts': housing_starts,
+            'consumer_confidence': consumer_confidence,
+            'retail_sales': np.random.uniform(400, 600),
+            'industrial_production': np.random.uniform(95, 110)
+        }
+        
+        data.append(row)
+    
+    # Create DataFrame
+    df = pd.DataFrame(data)
+    
+    # Sort by date
+    df = df.sort_values(['Date']).reset_index(drop=True)
+    
+    print(f"✓ Created dummy USA data with {len(df)} rows")
+    print(f"✓ Date range: {df['Date'].min()} to {df['Date'].max()}")
+    print(f"✓ Features: {[col for col in df.columns if col not in ['Date', 'home_price']]}")
+    
+    return df
+
+def run_dummy_usa_example():
+    '''
+    Run the complete USA baseline pipeline with dummy data.
+    '''
+    global USA_RESULTS
+    
+    print("="*70)
+    print("RUNNING DUMMY EXAMPLE - USA BASELINE")
+    print("="*70)
+    
+    # Create dummy data
+    df = create_dummy_usa_data()
+    
+    # Save dummy data to CSV (optional)
+    dummy_file_path = "dummy_usa_data.csv"
+    df.to_csv(dummy_file_path, index=False)
+    print(f"✓ Dummy data saved to: {dummy_file_path}")
+    
+    # Configure for dummy data
+    class DummyCFG:
+        def __init__(self):
+            self.filePath = dummy_file_path
+            self.outputPath = "dummy_USA_Baseline_results.csv"
+            self.idList = []
+            self.dateCol = "Date"
+            self.start_date = "2019-01-01"
+            self.end_date = "2023-12-31"
+            self.featureList = ['unemployment_rate', 'interest_rate', 'gdp_growth', 
+                              'inflation_rate', 'population_growth', 'median_income',
+                              'housing_starts', 'consumer_confidence', 'retail_sales', 'industrial_production']
+            self.targetCol = "home_price"
+            self.lagList = [1, 3, 6, 12]  # Reduced for dummy data
+            self.rateList = [1, 3, 6, 12]  # Reduced for dummy data
+            self.movingAverages = [3, 6, 12]  # Reduced for dummy data
+            self.targetForward = 12
+            self.featuresToUse = []
+            
+            # Model configurations
+            self.AllModelsList = ['LinearRegression', 'Ridge', 'RandomForest', 'XGBoost']
+            self.AllModelParams = {
+                'LinearRegression': {},
+                'Ridge': {'alpha': [0.1, 1.0, 10.0]},
+                'RandomForest': {'n_estimators': [50, 100], 'max_depth': [5, 10]},
+                'XGBoost': {'n_estimators': [50, 100], 'max_depth': [3, 6], 'learning_rate': [0.1]}
+            }
+    
+    # Initialize configuration
+    cfg = DummyCFG()
+    
+    # Load and check data
+    df_loaded = loadDataAndCheckAllMonths(cfg.filePath, cfg.dateCol, cfg.start_date, cfg.end_date)
+    
+    # Add features
+    df_features = addAllFeatures(df_loaded, cfg.idList, cfg.dateCol, cfg.featureList, 
+                               cfg.targetCol, cfg.lagList, cfg.movingAverages, cfg.rateList)
+    
+    # Add target
+    df_target, new_target_col = addTarget(df_features, cfg.idList, cfg.dateCol, 
+                                        cfg.targetCol, cfg.targetForward)
+    
+    # Fill missing values and create train/test split
+    df_filled, train_df, test_df, x_columns = fillMissingValues(df_target, new_target_col, 
+                                                              cfg.idList, cfg.dateCol)
+    
+    # Remove skewness and kurtosis
+    train_transformed, test_transformed, transformers = removeSkewnessAndKurtosis(
+        train_df, test_df, x_columns)
+    
+    # Standardize data
+    train_scaled, test_scaled, scaler = standardizeData(train_transformed, test_transformed, x_columns)
+    
+    # Remove high VIF features
+    train_clean, test_clean, final_features = checkAndRemoveHighVIF(train_scaled, test_scaled, x_columns)
+    
+    # Setup CV scheme
+    cv_scheme = timeseriesCV()
+    
+    # Train models and create ensemble
+    results = fitAndPredictVotingRegressor(train_clean, test_clean, final_features, 
+                                         cfg.featuresToUse, new_target_col, 
+                                         cfg.AllModelsList, cfg.AllModelParams, cv_scheme, scaler, cfg.dateCol)
+    
+    # Store results globally
+    USA_RESULTS.update(results)
+    USA_RESULTS['original_data'] = df_filled
+    USA_RESULTS['train_data'] = train_df
+    USA_RESULTS['test_data'] = test_df
+    USA_RESULTS['scaler'] = scaler
+    USA_RESULTS['transformers'] = transformers
+    
+    # Plot results
+    plotResults(results, cfg.outputPath)
+    
+    # Save final results
+    final_df = df_filled.copy()
+    final_df['predictions'] = np.nan
+    final_df.loc[train_df.index, 'predictions'] = results['train_predictions']
+    final_df.loc[test_df.index, 'predictions'] = results['test_predictions']
+    
+    final_df.to_csv(cfg.outputPath, index=False)
+    print(f"✓ Final results saved to: {cfg.outputPath}")
+    
+    print(f"\n{'='*60}")
+    print("DUMMY EXAMPLE PROCESSING COMPLETE")
+    print(f"{'='*60}")
+    print("✓ USA baseline model trained successfully")
+    
+    # Show example analysis
+    print(f"\n{'='*50}")
+    print("EXAMPLE TIME WINDOW ANALYSIS")
+    print(f"{'='*50}")
+    print("You can now analyze specific time windows using:")
+    print("  predictTimeWindow('2020-01-01', '2020-12-31')")
+    print("  predictTimeWindow('2021-01-01', '2021-06-30')")
+    print("  predictTimeWindow('2022-01-01', '2022-12-31')")
+    
+    print(f"\n{'='*70}")
+    print("DUMMY EXAMPLE COMPLETE!")
+    print(f"{'='*70}")
+    print("This was a demonstration with synthetic USA data.")
+    print("Replace the dummy data with your actual data to run the real analysis.")
+
+# Uncomment the line below to run the dummy example
+# run_dummy_usa_example()
+"""
