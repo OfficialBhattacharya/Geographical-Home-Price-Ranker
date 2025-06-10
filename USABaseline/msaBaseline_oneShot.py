@@ -25,12 +25,11 @@ warnings.filterwarnings('ignore')
 
 class CFG:
     """
-    General configuration class for data and model setup.
-    Modified for region-wise processing.
+    Configuration class for MSA Baseline model with USA data integration.
     """
     
     def __init__(self, get_user_input=True):
-        logger.info("Initializing CFG class for region-wise processing...")
+        logger.info("Initializing CFG class for MSA Baseline with USA data...")
         
         if get_user_input:
             self._get_user_configurations()
@@ -42,71 +41,59 @@ class CFG:
     
     def _get_user_configurations(self):
         """Get all configurations from user input"""
-        print("=== REGION-WISE CONFIGURATION SETUP ===")
+        print("=== MSA BASELINE CONFIGURATION SETUP ===")
         
         # Data paths
-        self.filePath = input("Enter input CSV file path [D:\\Geographical-Home-Price-Ranker\\AllProcessedFIles\\unified_monthly_data.csv]: ") or "D:\\Geographical-Home-Price-Ranker\\AllProcessedFIles\\unified_monthly_data.csv"
-        self.outputPath = input("Enter output CSV file path [D:\\Geographical-Home-Price-Ranker\\AllProcessedFIles\\MSA_Baseline_20250101.csv]: ") or "D:\\Geographical-Home-Price-Ranker\\AllProcessedFIles\\MSA_Baseline_20250101.csv"
+        self.msa_file_path = input("Enter MSA raw data CSV file path: ")
+        self.usa_file_path = input("Enter USA raw data CSV file path: ")
+        self.output_path = input("Enter output CSV file path [MSA_Baseline_Results.csv]: ") or "MSA_Baseline_Results.csv"
         
-        # Region configuration
-        self.regionCol = input("Enter region column name [region]: ") or "region"
+        # Column configurations for MSA data
+        self.date_col = input("Enter date column name [Year_Month_Day]: ") or "Year_Month_Day"
+        self.rcode_col = input("Enter region code column name [rcode]: ") or "rcode"
+        self.cs_name_col = input("Enter region name column name [cs_name]: ") or "cs_name"
+        self.hpi_col = input("Enter HPI column name [HPI]: ") or "HPI"
+        self.hpa12m_col = input("Enter HPA 12-month column name [hpa12m]: ") or "hpa12m"
         
         # Date configurations
-        self.dateCol = input("Enter date column name [Date]: ") or "Date"
         self.start_date = input("Enter start date (YYYY-MM-DD) [1990-01-01]: ") or "1990-01-01"
         self.end_date = input("Enter end date (YYYY-MM-DD) [2025-01-01]: ") or "2025-01-01"
         
         # Feature configurations
-        feature_input = input("Enter feature columns (comma-separated) []: ")
-        self.featureList = [f.strip() for f in feature_input.split(",")] if feature_input else []
-        
-        target_input = input("Enter target column name []: ")
-        self.targetCol = target_input if target_input else ""
-        
-        # ID columns (will be combined with region)
-        id_input = input("Enter additional ID columns (comma-separated) []: ")
-        self.additionalIdList = [i.strip() for i in id_input.split(",")] if id_input else []
-        
-        # Lag configurations
-        lag_input = input("Enter lag values (comma-separated) [1,3,6,8,12,15,18,24,36,48,60]: ")
-        self.lagList = [int(l.strip()) for l in lag_input.split(",")] if lag_input else [1,3,6,8,12,15,18,24,36,48,60]
-        
-        # Rate configurations
-        rate_input = input("Enter rate values (comma-separated) [1,2,3,4,5,6,7,8,9,10,11,12]: ")
-        self.rateList = [int(r.strip()) for r in rate_input.split(",")] if rate_input else [1,2,3,4,5,6,7,8,9,10,11,12]
-        
-        # Moving average configurations
-        ma_input = input("Enter moving average periods (comma-separated) [1,3,6,9,12,18,24]: ")
-        self.movingAverages = [int(m.strip()) for m in ma_input.split(",")] if ma_input else [1,3,6,9,12,18,24]
-        
-        # Target forward
-        target_forward = input("Enter target forward months [12]: ")
-        self.targetForward = int(target_forward) if target_forward else 12
-        
-        # Features to force use
-        forced_features = input("Enter features to force use (comma-separated) []: ")
-        self.featuresToUse = [f.strip() for f in forced_features.split(",")] if forced_features else []
+        feature_input = input("Enter additional feature columns (comma-separated) []: ")
+        self.additional_features = [f.strip() for f in feature_input.split(",")] if feature_input else []
         
         # Model configurations
         self._setup_model_configurations()
     
     def _set_default_configurations(self):
         """Set default configurations"""
-        self.filePath = "D:\\Geographical-Home-Price-Ranker\\AllProcessedFIles\\unified_monthly_data.csv"
-        self.outputPath = "D:\\Geographical-Home-Price-Ranker\\AllProcessedFIles\\MSA_Baseline_20250101.csv"
-        self.regionCol = "region"
-        self.additionalIdList = []
-        self.dateCol = "Date"
+        self.msa_file_path = "MSA_raw_data.csv"
+        self.usa_file_path = "USA_raw_data.csv"
+        self.output_path = "MSA_Baseline_Results.csv"
+        
+        # Column names
+        self.date_col = "Year_Month_Day"
+        self.rcode_col = "rcode"
+        self.cs_name_col = "cs_name"
+        self.hpi_col = "HPI"
+        self.hpa12m_col = "hpa12m"
+        
+        # Date range
         self.start_date = "1990-01-01"
         self.end_date = "2025-01-01"
-        self.featureList = []
-        self.targetCol = ""
-        self.lagList = [1,3,6,8,12,15,18,24,36,48,60]
-        self.rateList = [1,2,3,4,5,6,7,8,9,10,11,12]
-        self.movingAverages = [1,3,6,9,12,18,24]
-        self.targetForward = 12
-        self.featuresToUse = []
+        
+        # Additional features
+        self.additional_features = []
+        
+        # Model configurations
         self._setup_model_configurations()
+        
+        # Lag and feature engineering settings
+        self.lagList = [1,3,6,12,24]
+        self.rateList = [1,3,6,12]
+        self.movingAverages = [3,6,12]
+        self.targetForward = 12
     
     def _setup_model_configurations(self):
         """Setup model configurations"""
@@ -151,896 +138,233 @@ class CFG:
 # Global variable to store region-wise results
 REGION_RESULTS = {}
 
-def loadDataAndGetRegions(filePath, date_col, start_date, end_date, region_col, date_format="%Y-%m-%d"):
+def loadAndMergeData(cfg):
     """
-    Load data and get unique regions for processing.
+    Load MSA and USA data, then merge them.
     
     Parameters:
-    - filePath: Path to the CSV file
-    - date_col: Name of the date column
-    - start_date: Start date string
-    - end_date: End date string
-    - region_col: Name of the region column
-    - date_format: Date format string
+    - cfg: Configuration object
     
     Returns:
-    - df: Filtered dataframe
-    - unique_regions: List of unique regions
+    - merged_df: Merged dataframe with both MSA and USA data
+    - unique_regions: List of unique MSA regions
     """
-    logger.info("Step 2: Loading data and identifying regions...")
-    print(f"Loading data from: {filePath}")
+    logger.info("Step 1: Loading and merging MSA and USA data...")
+    print("Loading MSA and USA raw data...")
     
     try:
-        # Load data
-        df = pd.read_csv(filePath)
-        logger.info(f"Data loaded successfully. Shape: {df.shape}")
-        print(f"Original data shape: {df.shape}")
+        # Load MSA data
+        print(f"Loading MSA data from: {cfg.msa_file_path}")
+        msa_df = pd.read_csv(cfg.msa_file_path)
+        logger.info(f"MSA data loaded. Shape: {msa_df.shape}")
+        print(f"MSA data shape: {msa_df.shape}")
         
-        # Check if region column exists
-        if region_col not in df.columns:
-            raise ValueError(f"Region column '{region_col}' not found in data")
+        # Load USA data
+        print(f"Loading USA data from: {cfg.usa_file_path}")
+        usa_df = pd.read_csv(cfg.usa_file_path)
+        logger.info(f"USA data loaded. Shape: {usa_df.shape}")
+        print(f"USA data shape: {usa_df.shape}")
         
-        # Convert date column to datetime
-        df[date_col] = pd.to_datetime(df[date_col], format=date_format)
+        # Convert date columns to datetime
+        msa_df[cfg.date_col] = pd.to_datetime(msa_df[cfg.date_col])
+        usa_df[cfg.date_col] = pd.to_datetime(usa_df[cfg.date_col])
         
-        # Filter data by date range
-        start_dt = pd.to_datetime(start_date)
-        end_dt = pd.to_datetime(end_date)
+        # Filter MSA data by date range
+        start_dt = pd.to_datetime(cfg.start_date)
+        end_dt = pd.to_datetime(cfg.end_date)
         
-        df_filtered = df[(df[date_col] >= start_dt) & (df[date_col] <= end_dt)].copy()
-        logger.info(f"Data filtered to date range {start_date} to {end_date}. Shape: {df_filtered.shape}")
-        print(f"Filtered data shape: {df_filtered.shape}")
+        msa_df_filtered = msa_df[(msa_df[cfg.date_col] >= start_dt) & (msa_df[cfg.date_col] <= end_dt)].copy()
+        usa_df_filtered = usa_df[(usa_df[cfg.date_col] >= start_dt) & (usa_df[cfg.date_col] <= end_dt)].copy()
+        
+        logger.info(f"MSA data filtered. Shape: {msa_df_filtered.shape}")
+        logger.info(f"USA data filtered. Shape: {usa_df_filtered.shape}")
+        
+        # Prepare USA data for merging (rename columns to avoid conflicts)
+        usa_merge_cols = [cfg.date_col]
+        if 'ProjectedHPA1YFwd_USABaseline' in usa_df_filtered.columns:
+            usa_merge_cols.append('ProjectedHPA1YFwd_USABaseline')
+        if 'USA_HPA1Yfwd' in usa_df_filtered.columns:
+            usa_merge_cols.append('USA_HPA1Yfwd')
+        if 'USA_HPI1Yfwd' in usa_df_filtered.columns:
+            usa_merge_cols.append('USA_HPI1Yfwd')
+        
+        usa_for_merge = usa_df_filtered[usa_merge_cols].copy()
+        
+        # Merge MSA and USA data on date
+        print("Merging MSA and USA data...")
+        merged_df = msa_df_filtered.merge(usa_for_merge, on=cfg.date_col, how='left')
+        
+        logger.info(f"Data merged successfully. Shape: {merged_df.shape}")
+        print(f"Merged data shape: {merged_df.shape}")
         
         # Get unique regions
-        unique_regions = df_filtered[region_col].unique()
-        unique_regions = [r for r in unique_regions if pd.notna(r)]  # Remove NaN regions
+        unique_regions = merged_df[cfg.rcode_col].unique()
+        unique_regions = [r for r in unique_regions if pd.notna(r)]
         
-        logger.info(f"Found {len(unique_regions)} unique regions")
-        print(f"Found {len(unique_regions)} unique regions: {unique_regions[:10]}{'...' if len(unique_regions) > 10 else ''}")
+        logger.info(f"Found {len(unique_regions)} unique MSA regions")
+        print(f"Found {len(unique_regions)} unique MSA regions")
         
-        return df_filtered, unique_regions
+        return merged_df, unique_regions
         
     except Exception as e:
-        logger.error(f"Error in loadDataAndGetRegions: {str(e)}")
+        logger.error(f"Error in loadAndMergeData: {str(e)}")
         raise e
 
-def checkAllMonthsForRegion(df, region, region_col, date_col, start_date, end_date):
+def createForwardLookingVariables(df, cfg):
     """
-    Check if all months have rows for a specific region.
-    
-    Parameters:
-    - df: Dataframe
-    - region: Region to check
-    - region_col: Region column name
-    - date_col: Date column name
-    - start_date: Start date string
-    - end_date: End date string
-    
-    Returns:
-    - region_df: Filtered dataframe for the region
-    - missing_months: List of missing months
-    """
-    # Filter data for specific region
-    region_df = df[df[region_col] == region].copy()
-    
-    # Check for missing months
-    start_dt = pd.to_datetime(start_date)
-    end_dt = pd.to_datetime(end_date)
-    date_range = pd.date_range(start=start_dt, end=end_dt, freq='MS')
-    existing_dates = region_df[date_col].dt.to_period('M').unique()
-    expected_dates = date_range.to_period('M')
-    
-    missing_months = set(expected_dates) - set(existing_dates)
-    
-    return region_df, missing_months
-
-def addAllFeatures(df, idList, dateCol, featureList, targetCol, lagList, movingAverages, rateList):
-    """
-    Add all lagged features, moving averages, log differences, min/max values,
-    trendlines, deviations, and growth rates.
+    Create forward-looking variables (HPA1Yfwd, HPI1Y_fwd) for each MSA.
     
     Parameters:
     - df: Input dataframe
-    - idList: List of ID columns
-    - dateCol: Date column name
-    - featureList: List of feature columns
-    - targetCol: Target column name
-    - lagList: List of lag periods
-    - movingAverages: List of moving average periods
-    - rateList: List of rate periods
+    - cfg: Configuration object
+    
+    Returns:
+    - df: Dataframe with forward-looking variables
+    """
+    logger.info("Step 2: Creating forward-looking variables...")
+    print("Creating 1-year forward variables...")
+    
+    df_enhanced = df.copy()
+    
+    # Sort by region and date
+    df_enhanced = df_enhanced.sort_values([cfg.rcode_col, cfg.date_col])
+    
+    # Create HPA1Yfwd (1 year forward HPA)
+    df_enhanced['HPA1Yfwd'] = df_enhanced.groupby([cfg.rcode_col, cfg.cs_name_col])[cfg.hpa12m_col].shift(-12)
+    
+    # Create HPI1Y_fwd (1 year forward HPI)
+    df_enhanced['HPI1Y_fwd'] = df_enhanced.groupby([cfg.rcode_col, cfg.cs_name_col])[cfg.hpi_col].shift(-12)
+    
+    logger.info("Forward-looking variables created successfully")
+    print("✓ Forward-looking variables created")
+    
+    return df_enhanced
+
+def createTrainTestTags(df, cfg):
+    """
+    Create train/test tags. Test data is the last year where we don't have forward-looking data.
+    
+    Parameters:
+    - df: Input dataframe
+    - cfg: Configuration object
+    
+    Returns:
+    - df: Dataframe with train/test tags
+    """
+    logger.info("Step 3: Creating train/test tags...")
+    print("Creating train/test split tags...")
+    
+    df_tagged = df.copy()
+    
+    # Initialize tag column
+    df_tagged['tag'] = 'train'
+    
+    # For each MSA, mark the last 12 months (where HPA1Yfwd is NaN) as test
+    for region in df_tagged[cfg.rcode_col].unique():
+        if pd.isna(region):
+            continue
+            
+        region_mask = df_tagged[cfg.rcode_col] == region
+        region_df = df_tagged[region_mask].copy()
+        
+        # Find rows where HPA1Yfwd is NaN (these are test rows)
+        test_mask = region_df['HPA1Yfwd'].isna()
+        
+        # Update the main dataframe
+        df_tagged.loc[region_mask & df_tagged['HPA1Yfwd'].isna(), 'tag'] = 'test'
+    
+    train_count = (df_tagged['tag'] == 'train').sum()
+    test_count = (df_tagged['tag'] == 'test').sum()
+    
+    logger.info(f"Train/test tags created. Train: {train_count}, Test: {test_count}")
+    print(f"✓ Train/test split created - Train: {train_count}, Test: {test_count}")
+    
+    return df_tagged
+
+def addAllFeatures(df, cfg):
+    """
+    Add all lagged features, moving averages, and other engineered features using hpa12m as base.
+    
+    Parameters:
+    - df: Input dataframe
+    - cfg: Configuration object
     
     Returns:
     - df: Enhanced dataframe with new features
     """
-    logger.info("Step 3: Adding all features...")
+    logger.info("Step 4: Adding engineered features...")
     print("Adding comprehensive feature set...")
     
     df_enhanced = df.copy()
     
-    # Combine features and target for processing
-    all_features = featureList + [targetCol] if targetCol and targetCol not in featureList else featureList
+    # Define features to engineer (hpa12m is the main target feature)
+    base_features = [cfg.hpa12m_col, cfg.hpi_col]
     
-    for feature in all_features:
-        if feature not in df_enhanced.columns:
-            logger.warning(f"Feature {feature} not found in dataframe")
-            continue
-            
+    # Add USA baseline features if available
+    if 'ProjectedHPA1YFwd_USABaseline' in df_enhanced.columns:
+        base_features.append('ProjectedHPA1YFwd_USABaseline')
+    if 'USA_HPA1Yfwd' in df_enhanced.columns:
+        base_features.append('USA_HPA1Yfwd')
+    if 'USA_HPI1Yfwd' in df_enhanced.columns:
+        base_features.append('USA_HPI1Yfwd')
+    
+    # Add any additional features from config
+    base_features.extend(cfg.additional_features)
+    
+    # Remove duplicates and ensure columns exist
+    base_features = list(set([f for f in base_features if f in df_enhanced.columns]))
+    
+    # Sort by region and date for proper lag calculation
+    df_enhanced = df_enhanced.sort_values([cfg.rcode_col, cfg.date_col])
+    
+    for feature in base_features:
         print(f"Processing feature: {feature}")
         
-        # Sort by date for proper lag calculation
-        df_enhanced = df_enhanced.sort_values([dateCol])
-        
         # 1. Lagged features
-        for lag in lagList:
+        for lag in cfg.lagList:
             lag_col = f"{feature}_lag_{lag}"
-            df_enhanced[lag_col] = df_enhanced.groupby(idList if idList else [True])[feature].shift(lag)
-            
+            df_enhanced[lag_col] = df_enhanced.groupby([cfg.rcode_col, cfg.cs_name_col])[feature].shift(lag)
+        
         # 2. Moving averages
-        for ma in movingAverages:
+        for ma in cfg.movingAverages:
             ma_col = f"{feature}_ma_{ma}"
-            df_enhanced[ma_col] = df_enhanced.groupby(idList if idList else [True])[feature].rolling(window=ma, min_periods=1).mean().reset_index(level=0, drop=True)
-            
-        # 3. Log differences
-        for lag in lagList:
-            log_diff_col = f"{feature}_log_diff_{lag}"
-            df_enhanced[log_diff_col] = df_enhanced.groupby(idList if idList else [True])[feature].apply(
-                lambda x: np.log(x / x.shift(lag)).replace([np.inf, -np.inf], np.nan)
-            ).reset_index(level=0, drop=True)
-            
-        # 4. Min/Max in last year (12 months)
+            df_enhanced[ma_col] = df_enhanced.groupby([cfg.rcode_col, cfg.cs_name_col])[feature].rolling(
+                window=ma, min_periods=1).mean().reset_index(level=[0,1], drop=True)
+        
+        # 3. Rate of change
+        for rate in cfg.rateList:
+            rate_col = f"{feature}_pct_{rate}m"
+            df_enhanced[rate_col] = df_enhanced.groupby([cfg.rcode_col, cfg.cs_name_col])[feature].pct_change(periods=rate)
+        
+        # 4. Min/Max in last 12 months
         min_col = f"{feature}_min_12m"
         max_col = f"{feature}_max_12m"
-        df_enhanced[min_col] = df_enhanced.groupby(idList if idList else [True])[feature].rolling(window=12, min_periods=1).min().reset_index(level=0, drop=True)
-        df_enhanced[max_col] = df_enhanced.groupby(idList if idList else [True])[feature].rolling(window=12, min_periods=1).max().reset_index(level=0, drop=True)
-        
-        # 5. Trendlines and deviations (using linear regression on rolling window)
-        def calculate_trend_deviation(series, window=12):
-            if len(series) < window:
-                return pd.Series([np.nan, np.nan], index=['trend', 'deviation'])
-            
-            x = np.arange(len(series))
-            slope, intercept, r_value, p_value, std_err = stats.linregress(x, series)
-            trend = slope * (len(series) - 1) + intercept
-            deviation = series.iloc[-1] - trend
-            
-            return pd.Series([slope, deviation], index=['trend', 'deviation'])
-        
-        trend_dev = df_enhanced.groupby(idList if idList else [True])[feature].rolling(window=12, min_periods=6).apply(
-            lambda x: calculate_trend_deviation(x).iloc[0], raw=False
-        ).reset_index(level=0, drop=True)
-        
-        df_enhanced[f"{feature}_trend_12m"] = trend_dev
-        
-        deviation = df_enhanced.groupby(idList if idList else [True])[feature].rolling(window=12, min_periods=6).apply(
-            lambda x: calculate_trend_deviation(x).iloc[1], raw=False
-        ).reset_index(level=0, drop=True)
-        
-        df_enhanced[f"{feature}_deviation_12m"] = deviation
-        
-        # 6. Growth rates
-        for rate in rateList:
-            growth_col = f"{feature}_growth_{rate}m"
-            df_enhanced[growth_col] = df_enhanced.groupby(idList if idList else [True])[feature].pct_change(periods=rate)
+        df_enhanced[min_col] = df_enhanced.groupby([cfg.rcode_col, cfg.cs_name_col])[feature].rolling(
+            window=12, min_periods=1).min().reset_index(level=[0,1], drop=True)
+        df_enhanced[max_col] = df_enhanced.groupby([cfg.rcode_col, cfg.cs_name_col])[feature].rolling(
+            window=12, min_periods=1).max().reset_index(level=[0,1], drop=True)
     
     logger.info(f"Feature engineering complete. New shape: {df_enhanced.shape}")
-    print(f"Feature engineering complete. DataFrame shape: {df_enhanced.shape}")
+    print(f"✓ Feature engineering complete. DataFrame shape: {df_enhanced.shape}")
     
     return df_enhanced
 
-def addTarget(df, idList, dateCol, targetCol, targetForward):
+def processRegionMSA(region, df_region, cfg, target_col='HPA1Yfwd'):
     """
-    Create forward-looking target variable.
+    Process a single MSA region through the modeling pipeline.
     
     Parameters:
-    - df: Input dataframe
-    - idList: List of ID columns
-    - dateCol: Date column name
-    - targetCol: Original target column name
-    - targetForward: Number of months to forward
-    
-    Returns:
-    - df: Dataframe with new target column
-    """
-    logger.info("Step 4: Adding target variable...")
-    print(f"Creating target variable with {targetForward} months forward look...")
-    
-    df_target = df.copy()
-    
-    # Sort by date for proper forward calculation
-    df_target = df_target.sort_values([dateCol])
-    
-    # Create forward target
-    new_target_col = f"{targetCol}_forward_{targetForward}m"
-    df_target[new_target_col] = df_target.groupby(idList if idList else [True])[targetCol].shift(-targetForward)
-    
-    logger.info(f"Target variable '{new_target_col}' created successfully")
-    print(f"✓ Target variable '{new_target_col}' created")
-    
-    return df_target, new_target_col
-
-def fillMissingValues(df, new_target_col, idList, dateCol, fillMethod="DecayRate"):
-    """
-    Fill missing values using decay rate backfill. Identify train/test split.
-    
-    Parameters:
-    - df: Input dataframe
-    - new_target_col: Name of the new target column
-    - idList: List of ID columns
-    - dateCol: Date column name
-    - fillMethod: Method for filling missing values
-    
-    Returns:
-    - df_clean: Cleaned dataframe
-    - train_df: Training data
-    - test_df: Test data
-    """
-    logger.info("Step 5: Filling missing values and creating train/test split...")
-    print("Filling missing values and identifying train/test datasets...")
-    
-    df_filled = df.copy()
-    
-    # Identify X variables (all columns except ID, date, and target)
-    exclude_cols = idList + [dateCol, new_target_col]
-    x_columns = [col for col in df_filled.columns if col not in exclude_cols]
-    
-    print(f"Number of X variables: {len(x_columns)}")
-    
-    # Fill missing values in X variables using decay rate (exponential weighted mean)
-    for col in x_columns:
-        if df_filled[col].isnull().any():
-            # Group by ID if ID columns exist
-            if idList:
-                df_filled[col] = df_filled.groupby(idList)[col].apply(
-                    lambda x: x.fillna(method='bfill').fillna(method='ffill')
-                ).reset_index(level=0, drop=True)
-            else:
-                # Use exponential weighted mean for backfill
-                df_filled[col] = df_filled[col].fillna(method='bfill').fillna(method='ffill')
-                
-                # Apply decay rate
-                if df_filled[col].isnull().any():
-                    ewm_values = df_filled[col].ewm(span=12, adjust=False).mean()
-                    df_filled[col] = df_filled[col].fillna(ewm_values)
-    
-    # Create train/test split based on target availability
-    train_mask = df_filled[new_target_col].notna()
-    test_mask = df_filled[new_target_col].isna()
-    
-    train_df = df_filled[train_mask].copy()
-    test_df = df_filled[test_mask].copy()
-    
-    # Verify no NAs in X variables for training data
-    train_x_nas = train_df[x_columns].isnull().sum().sum()
-    if train_x_nas > 0:
-        logger.warning(f"Found {train_x_nas} NAs in training X variables")
-        # Final cleanup for training data
-        for col in x_columns:
-            if train_df[col].isnull().any():
-                train_df[col] = train_df[col].fillna(train_df[col].median())
-    
-    logger.info(f"Training data shape: {train_df.shape}")
-    logger.info(f"Test data shape: {test_df.shape}")
-    print(f"✓ Training data: {train_df.shape[0]} rows")
-    print(f"✓ Test data: {test_df.shape[0]} rows")
-    
-    return df_filled, train_df, test_df, x_columns
-
-def removeSkewnessAndKurtosis(train_df, test_df, x_columns, threshold=1):
-    """
-    Remove skewness and kurtosis using Box-Cox transformation.
-    
-    Parameters:
-    - train_df: Training dataframe
-    - test_df: Test dataframe
-    - x_columns: List of X variable columns
-    - threshold: Skewness threshold for transformation
-    
-    Returns:
-    - train_transformed: Transformed training data
-    - test_transformed: Transformed test data
-    - transformers: Dictionary of transformers used
-    """
-    logger.info("Step 6: Removing skewness and kurtosis...")
-    print("Applying Box-Cox transformations to reduce skewness...")
-    
-    train_transformed = train_df.copy()
-    test_transformed = test_df.copy()
-    transformers = {}
-    
-    for col in x_columns:
-        try:
-            # Calculate skewness
-            skewness = abs(train_transformed[col].skew())
-            
-            if skewness > threshold:
-                print(f"Transforming {col} (skewness: {skewness:.3f})")
-                
-                # Ensure positive values for Box-Cox
-                min_val = train_transformed[col].min()
-                if min_val <= 0:
-                    shift_value = abs(min_val) + 1
-                    train_transformed[col] = train_transformed[col] + shift_value
-                    test_transformed[col] = test_transformed[col] + shift_value
-                    transformers[col] = {'shift': shift_value}
-                else:
-                    transformers[col] = {'shift': 0}
-                
-                # Apply Box-Cox transformation
-                transformed_values, lambda_param = boxcox(train_transformed[col])
-                train_transformed[col] = transformed_values
-                transformers[col]['lambda'] = lambda_param
-                
-                # Apply same transformation to test data
-                if lambda_param == 0:
-                    test_transformed[col] = np.log(test_transformed[col])
-                else:
-                    test_transformed[col] = (np.power(test_transformed[col], lambda_param) - 1) / lambda_param
-                
-                new_skewness = abs(pd.Series(transformed_values).skew())
-                logger.info(f"Column {col}: skewness reduced from {skewness:.3f} to {new_skewness:.3f}")
-                
-        except Exception as e:
-            logger.warning(f"Could not transform column {col}: {str(e)}")
-            transformers[col] = None
-    
-    logger.info("Skewness and kurtosis reduction complete")
-    print("✓ Skewness and kurtosis reduction complete")
-    
-    return train_transformed, test_transformed, transformers
-
-def standardizeData(train_df, test_df, x_columns, scaler_type="RobustScaler"):
-    """
-    Standardize features using specified scaler.
-    
-    Parameters:
-    - train_df: Training dataframe
-    - test_df: Test dataframe
-    - x_columns: List of X variable columns
-    - scaler_type: Type of scaler ('RobustScaler', 'StandardScaler', 'MinMaxScaler')
-    
-    Returns:
-    - train_scaled: Scaled training data
-    - test_scaled: Scaled test data
-    - scaler: Fitted scaler object
-    """
-    logger.info("Step 7: Standardizing data...")
-    print(f"Standardizing data using {scaler_type}...")
-    
-    # Choose scaler
-    if scaler_type == "RobustScaler":
-        scaler = RobustScaler()
-    elif scaler_type == "StandardScaler":
-        scaler = StandardScaler()
-    elif scaler_type == "MinMaxScaler":
-        scaler = MinMaxScaler()
-    else:
-        logger.warning(f"Unknown scaler type {scaler_type}, using RobustScaler")
-        scaler = RobustScaler()
-    
-    train_scaled = train_df.copy()
-    test_scaled = test_df.copy()
-    
-    # Fit scaler on training data and transform both
-    scaler.fit(train_scaled[x_columns])
-    
-    train_scaled[x_columns] = scaler.transform(train_scaled[x_columns])
-    test_scaled[x_columns] = scaler.transform(test_scaled[x_columns])
-    
-    logger.info("Data standardization complete")
-    print("✓ Data standardization complete")
-    
-    return train_scaled, test_scaled, scaler
-
-def checkAndRemoveHighVIF(train_df, test_df, x_columns, threshold=10, min_features=10, fallback_features=15):
-    """
-    Remove features with high Variance Inflation Factor (VIF) to reduce multicollinearity.
-    
-    Parameters:
-    - train_df: Training dataframe
-    - test_df: Test dataframe
-    - x_columns: List of X variable columns
-    - threshold: VIF threshold above which features are removed
-    - min_features: Minimum number of features to keep
-    - fallback_features: Number of features to keep if VIF removal goes below min_features
-    
-    Returns:
-    - train_clean: Training data with selected features
-    - test_clean: Test data with selected features
-    - final_features: List of final selected features
-    """
-    logger.info("Step 8: Checking and removing high VIF features...")
-    print(f"Removing features with VIF > {threshold}...")
-    
-    # Start with all features
-    current_features = x_columns.copy()
-    
-    # Remove features with high VIF iteratively
-    iteration = 0
-    max_iterations = 50
-    
-    while iteration < max_iterations:
-        if len(current_features) <= min_features:
-            logger.info(f"Reached minimum features ({min_features}), stopping VIF removal")
-            break
-        
-        # Calculate VIF for current features
-        vif_data = pd.DataFrame()
-        vif_data["Feature"] = current_features
-        
-        try:
-            X_vif = train_df[current_features].fillna(0)  # Handle any remaining NAs
-            vif_data["VIF"] = [variance_inflation_factor(X_vif.values, i) 
-                              for i in range(len(current_features))]
-            
-            # Find feature with highest VIF
-            max_vif_idx = vif_data["VIF"].idxmax()
-            max_vif_value = vif_data.loc[max_vif_idx, "VIF"]
-            max_vif_feature = vif_data.loc[max_vif_idx, "Feature"]
-            
-            if max_vif_value > threshold:
-                print(f"Removing {max_vif_feature} (VIF: {max_vif_value:.2f})")
-                current_features.remove(max_vif_feature)
-                iteration += 1
-            else:
-                break
-                
-        except Exception as e:
-            logger.warning(f"Error calculating VIF: {str(e)}")
-            break
-    
-    # If too many features were removed, select top features by correlation with target
-    if len(current_features) < min_features:
-        logger.warning(f"VIF removal left only {len(current_features)} features, selecting top {fallback_features} by correlation")
-        
-        # Calculate correlation with target
-        target_col = [col for col in train_df.columns if 'forward' in col and 'm' in col]
-        if target_col:
-            correlations = train_df[x_columns].corrwith(train_df[target_col[0]]).abs().sort_values(ascending=False)
-            current_features = correlations.head(fallback_features).index.tolist()
-        else:
-            # Fallback: use first N features
-            current_features = x_columns[:fallback_features]
-    
-    final_features = current_features
-    
-    logger.info(f"Final feature selection: {len(final_features)} features after VIF filtering")
-    print(f"✓ Selected {len(final_features)} features after VIF filtering")
-    
-    # Return cleaned datasets
-    train_clean = train_df.copy()
-    test_clean = test_df.copy()
-    
-    return train_clean, test_clean, final_features
-
-def timeseriesCV(scheme_type="TimeSeriesSplit", n_splits=5, test_size=None):
-    """
-    Setup time series cross-validation scheme.
-    
-    Parameters:
-    - scheme_type: Type of CV scheme
-    - n_splits: Number of splits
-    - test_size: Size of test set for each split
-    
-    Returns:
-    - cv_scheme: Cross-validation object
-    """
-    logger.info("Step 9: Setting up time series cross-validation...")
-    print(f"Setting up {scheme_type} with {n_splits} splits...")
-    
-    if scheme_type == "TimeSeriesSplit":
-        cv_scheme = TimeSeriesSplit(n_splits=n_splits, test_size=test_size)
-    else:
-        logger.warning(f"Unknown CV scheme {scheme_type}, using TimeSeriesSplit")
-        cv_scheme = TimeSeriesSplit(n_splits=n_splits, test_size=test_size)
-    
-    logger.info("Time series CV setup complete")
-    print("✓ Time series CV setup complete")
-    
-    return cv_scheme
-
-def fitAndPredictVotingRegressor(train_df, test_df, final_features, featuresToUse, new_target_col, 
-                                modelList, modelParams, cv_scheme, scaler=None, date_col='Date'):
-    """
-    Fit multiple models and create neural network-based meta learner for final predictions.
-    
-    Parameters:
-    - train_df: Training dataframe
-    - test_df: Test dataframe
-    - final_features: List of final features
-    - featuresToUse: Features to force include
-    - new_target_col: Target column name
-    - modelList: List of model names
-    - modelParams: Model parameters dictionary
-    - cv_scheme: Cross-validation scheme
-    - scaler: Fitted scaler object
-    - date_col: Date column name for time-series plotting
-    
-    Returns:
-    - results: Dictionary containing model results and predictions
-    """
-    logger.info("Step 10: Training models and creating neural network meta learner...")
-    print("Training multiple models and creating neural network ensemble...")
-    
-    # Combine final features with forced features
-    all_features = list(set(final_features + featuresToUse))
-    
-    # Handle forced features that might need preprocessing
-    for feature in featuresToUse:
-        if feature not in train_df.columns:
-            logger.warning(f"Forced feature {feature} not found in data")
-            continue
-        
-        if feature not in final_features:
-            # Fill missing values and standardize forced features
-            if train_df[feature].isnull().any():
-                train_df[feature] = train_df[feature].fillna(train_df[feature].median())
-                test_df[feature] = test_df[feature].fillna(test_df[feature].median())
-            
-            if scaler is not None:
-                # Standardize forced features
-                feature_scaler = type(scaler)()
-                train_df[feature] = feature_scaler.fit_transform(train_df[[feature]])
-                test_df[feature] = feature_scaler.transform(test_df[[feature]])
-    
-    # Prepare data
-    X_train = train_df[all_features]
-    y_train = train_df[new_target_col]
-    X_test = test_df[all_features]
-    
-    # Initialize models with improved hyperparameters
-    models = {}
-    
-    if 'LinearRegression' in modelList:
-        models['LinearRegression'] = LinearRegression()
-    
-    if 'Ridge' in modelList:
-        ridge_params = modelParams.get('Ridge', {'alpha': [0.1, 1.0, 10.0, 100.0]})
-        ridge = GridSearchCV(Ridge(), ridge_params, cv=3, scoring='neg_mean_squared_error', n_jobs=-1)
-        models['Ridge'] = ridge
-    
-    if 'Lasso' in modelList:
-        lasso_params = modelParams.get('Lasso', {'alpha': [0.01, 0.1, 1.0, 10.0]})
-        lasso = GridSearchCV(Lasso(max_iter=2000), lasso_params, cv=3, scoring='neg_mean_squared_error', n_jobs=-1)
-        models['Lasso'] = lasso
-    
-    if 'ElasticNet' in modelList:
-        elastic_params = modelParams.get('ElasticNet', {
-            'alpha': [0.01, 0.1, 1.0, 10.0], 
-            'l1_ratio': [0.1, 0.3, 0.5, 0.7, 0.9]
-        })
-        elastic = GridSearchCV(ElasticNet(max_iter=2000), elastic_params, cv=3, scoring='neg_mean_squared_error', n_jobs=-1)
-        models['ElasticNet'] = elastic
-    
-    if 'RandomForest' in modelList:
-        rf_params = modelParams.get('RandomForest', {
-            'n_estimators': [100, 200],
-            'max_depth': [10, 20, None],
-            'min_samples_split': [2, 5],
-            'min_samples_leaf': [1, 2],
-            'max_features': ['sqrt', 'log2']
-        })
-        rf = GridSearchCV(RandomForestRegressor(random_state=42, n_jobs=-1), rf_params, 
-                         cv=3, scoring='neg_mean_squared_error', n_jobs=-1)
-        models['RandomForest'] = rf
-    
-    if 'XGBoost' in modelList:
-        xgb_params = modelParams.get('XGBoost', {
-            'n_estimators': [100, 200],
-            'max_depth': [4, 6, 8],
-            'learning_rate': [0.01, 0.1],
-            'subsample': [0.8, 1.0],
-            'colsample_bytree': [0.8, 1.0]
-        })
-        xgb_model = GridSearchCV(xgb.XGBRegressor(random_state=42, n_jobs=-1), xgb_params,
-                                cv=3, scoring='neg_mean_squared_error', n_jobs=-1)
-        models['XGBoost'] = xgb_model
-    
-    if 'LightGBM' in modelList:
-        lgb_params = modelParams.get('LightGBM', {
-            'n_estimators': [100, 200],
-            'max_depth': [4, 6, 8],
-            'learning_rate': [0.01, 0.1],
-            'num_leaves': [31, 50],
-            'subsample': [0.8, 1.0]
-        })
-        lgb_model = GridSearchCV(lgb.LGBMRegressor(random_state=42, verbose=-1, n_jobs=-1), lgb_params,
-                                cv=3, scoring='neg_mean_squared_error', n_jobs=-1)
-        models['LightGBM'] = lgb_model
-    
-    if 'GradientBoosting' in modelList:
-        gb_params = modelParams.get('GradientBoosting', {
-            'n_estimators': [100, 200],
-            'max_depth': [4, 6, 8],
-            'learning_rate': [0.01, 0.1],
-            'subsample': [0.8, 1.0]
-        })
-        gb_model = GridSearchCV(GradientBoostingRegressor(random_state=42), gb_params,
-                               cv=3, scoring='neg_mean_squared_error', n_jobs=-1)
-        models['GradientBoosting'] = gb_model
-    
-    # Train individual models and collect predictions for meta learner
-    model_scores = {}
-    trained_models = {}
-    base_predictions_train = []
-    base_predictions_test = []
-    
-    print("Training individual models with hyperparameter tuning...")
-    
-    for name, model in models.items():
-        print(f"Training and tuning {name}...")
-        
-        try:
-            # Fit model (with grid search if applicable)
-            model.fit(X_train, y_train)
-            trained_models[name] = model
-            
-            # Get predictions for meta learner
-            if hasattr(model, 'predict'):
-                train_pred = model.predict(X_train)
-                test_pred = model.predict(X_test)
-            else:
-                # For GridSearchCV objects
-                train_pred = model.best_estimator_.predict(X_train)
-                test_pred = model.best_estimator_.predict(X_test)
-            
-            base_predictions_train.append(train_pred)
-            base_predictions_test.append(test_pred)
-            
-            # Calculate CV score
-            cv_scores = cross_val_score(model, X_train, y_train, cv=cv_scheme, 
-                                      scoring='neg_mean_squared_error', n_jobs=-1)
-            model_scores[name] = -cv_scores.mean()
-            
-            logger.info(f"{name} - CV MSE: {model_scores[name]:.4f}")
-            
-            # Log best parameters if it's a GridSearchCV
-            if hasattr(model, 'best_params_'):
-                logger.info(f"{name} best parameters: {model.best_params_}")
-            
-        except Exception as e:
-            logger.error(f"Error training {name}: {str(e)}")
-            print(f"  ❌ Error training {name}: {str(e)}")
-    
-    if len(base_predictions_train) < 2:
-        logger.error("Not enough models trained successfully for ensemble")
-        raise ValueError("Not enough models trained successfully for ensemble")
-    
-    # Prepare meta learner data
-    meta_X_train = np.column_stack(base_predictions_train)
-    meta_X_test = np.column_stack(base_predictions_test)
-    
-    print(f"Training neural network meta learner on {meta_X_train.shape[1]} base model predictions...")
-    
-    # Create neural network meta learner with regularization
-    meta_learner = MLPRegressor(
-        hidden_layer_sizes=(50, 25),
-        activation='relu',
-        solver='adam',
-        alpha=0.01,
-        learning_rate='adaptive',
-        learning_rate_init=0.001,
-        max_iter=1000,
-        early_stopping=True,
-        validation_fraction=0.2,
-        n_iter_no_change=20,
-        random_state=42
-    )
-    
-    # Train meta learner
-    meta_learner.fit(meta_X_train, y_train)
-    
-    # Make final predictions
-    final_train_pred = meta_learner.predict(meta_X_train)
-    final_test_pred = meta_learner.predict(meta_X_test)
-    
-    # Calculate final metrics
-    train_mse = mean_squared_error(y_train, final_train_pred)
-    train_r2 = r2_score(y_train, final_train_pred)
-    train_mae = mean_absolute_error(y_train, final_train_pred)
-    
-    logger.info(f"Neural Network Meta Learner - Train MSE: {train_mse:.4f}, R²: {train_r2:.4f}, MAE: {train_mae:.4f}")
-    print(f"✓ Neural Network Meta Learner trained - Train R²: {train_r2:.4f}")
-    
-    # Calculate approximate model weights (for interpretation)
-    try:
-        model_weights = {}
-        model_names = list(trained_models.keys())
-        
-        # Calculate correlation between base predictions and meta learner output
-        correlations = []
-        for i, pred in enumerate(base_predictions_train):
-            corr = np.corrcoef(pred, final_train_pred)[0, 1]
-            correlations.append(abs(corr))
-        
-        # Normalize to get approximate weights
-        total_corr = sum(correlations)
-        if total_corr > 0:
-            for i, name in enumerate(model_names):
-                model_weights[name] = correlations[i] / total_corr
-        else:
-            # Equal weights as fallback
-            for name in model_names:
-                model_weights[name] = 1.0 / len(model_names)
-        
-        logger.info(f"Approximate model weights: {model_weights}")
-        
-    except Exception as e:
-        logger.warning(f"Could not calculate model weights: {str(e)}")
-        model_weights = {}
-    
-    # Compile results
-    results = {
-        'meta_learner': meta_learner,
-        'individual_models': trained_models,
-        'model_scores': model_scores,
-        'model_weights': model_weights,
-        'train_predictions': final_train_pred,
-        'test_predictions': final_test_pred,
-        'base_train_predictions': dict(zip(trained_models.keys(), base_predictions_train)),
-        'base_test_predictions': dict(zip(trained_models.keys(), base_predictions_test)),
-        'X_train': X_train,
-        'y_train': y_train,
-        'X_test': X_test,
-        'features_used': all_features,
-        'target_column': new_target_col,
-        'train_dates': train_df[date_col] if date_col in train_df.columns else None,
-        'test_dates': test_df[date_col] if date_col in test_df.columns else None,
-        'date_column': date_col,
-        'meta_train_data': meta_X_train,
-        'meta_test_data': meta_X_test
-    }
-    
-    logger.info("Model training and neural network ensemble creation complete")
-    print("✓ Model training and neural network ensemble creation complete")
-    
-    return results
-
-def plotResults(results, output_path=None):
-    """
-    Plot actual vs predicted values for the final model including time-series analysis.
-    
-    Parameters:
-    - results: Results dictionary from fitAndPredictVotingRegressor
-    - output_path: Path to save plots
-    
-    Returns:
-    - None (displays/saves plots)
-    """
-    logger.info("Step 11: Plotting results...")
-    print("Creating comprehensive model analysis plots...")
-    
-    # Set up the plotting style
-    plt.style.use('seaborn-v0_8')
-    fig, axes = plt.subplots(1, 3, figsize=(20, 6))
-    fig.suptitle('Model Performance Analysis', fontsize=16, fontweight='bold')
-    
-    # 1. Time-Series Plot: Actual vs Predicted over Time
-    ax1 = axes[0]
-    
-    if results['train_dates'] is not None and results['test_dates'] is not None:
-        # Plot training period (actual vs predicted)
-        train_dates = pd.to_datetime(results['train_dates'])
-        test_dates = pd.to_datetime(results['test_dates'])
-        
-        # Plot actual values for training period
-        ax1.plot(train_dates, results['y_train'], 'b-', label='Actual (Training)', linewidth=2, alpha=0.8)
-        
-        # Plot predicted values for training period
-        ax1.plot(train_dates, results['train_predictions'], 'r--', label='Predicted (Training)', linewidth=2, alpha=0.8)
-        
-        # Plot predicted values for test period (projections only)
-        ax1.plot(test_dates, results['test_predictions'], 'g-', label='Predicted (Projections)', linewidth=2, alpha=0.8)
-        
-        # Add vertical line to separate training and test periods
-        if len(train_dates) > 0 and len(test_dates) > 0:
-            split_date = train_dates.max()
-            ax1.axvline(x=split_date, color='orange', linestyle=':', linewidth=2, alpha=0.7, label='Train/Test Split')
-        
-        ax1.set_xlabel('Date')
-        ax1.set_ylabel('Target Values')
-        ax1.set_title('Time Series: Actual vs Predicted')
-        ax1.legend()
-        ax1.grid(True, alpha=0.3)
-        
-        # Rotate x-axis labels for better readability
-        ax1.tick_params(axis='x', rotation=45)
-        
-        # Calculate and display performance metrics
-        train_r2 = r2_score(results['y_train'], results['train_predictions'])
-        train_mse = mean_squared_error(results['y_train'], results['train_predictions'])
-        
-        # Add text box with performance metrics
-        textstr = f'Training R² = {train_r2:.3f}\nTraining MSE = {train_mse:.2f}'
-        props = dict(boxstyle='round', facecolor='white', alpha=0.8)
-        ax1.text(0.02, 0.98, textstr, transform=ax1.transAxes, fontsize=9,
-                verticalalignment='top', bbox=props)
-        
-        print(f"✓ Time-series plot created with {len(train_dates)} training points and {len(test_dates)} projection points")
-        
-    else:
-        ax1.text(0.5, 0.5, 'Date information not available\nfor time-series plot', 
-                ha='center', va='center', transform=ax1.transAxes)
-        ax1.set_title('Time Series: Data Not Available')
-        logger.warning("Date information not available for time-series plot")
-    
-    # 2. Training Actual vs Predicted Scatter
-    ax2 = axes[1]
-    ax2.scatter(results['y_train'], results['train_predictions'], alpha=0.6, s=20)
-    
-    # Perfect prediction line
-    min_val = min(results['y_train'].min(), results['train_predictions'].min())
-    max_val = max(results['y_train'].max(), results['train_predictions'].max())
-    ax2.plot([min_val, max_val], [min_val, max_val], 'r--', lw=2, label='Perfect Prediction')
-    
-    ax2.set_xlabel('Actual Values')
-    ax2.set_ylabel('Predicted Values')
-    ax2.set_title('Training Set: Actual vs Predicted')
-    ax2.legend()
-    ax2.grid(True, alpha=0.3)
-    
-    # Calculate and display R²
-    train_r2 = r2_score(results['y_train'], results['train_predictions'])
-    ax2.text(0.05, 0.95, f'R² = {train_r2:.3f}', transform=ax2.transAxes, 
-             bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
-    
-    # 3. Residuals plot
-    ax3 = axes[2]
-    residuals = results['y_train'] - results['train_predictions']
-    ax3.scatter(results['train_predictions'], residuals, alpha=0.6, s=20)
-    ax3.axhline(y=0, color='r', linestyle='--')
-    ax3.set_xlabel('Predicted Values')
-    ax3.set_ylabel('Residuals')
-    ax3.set_title('Residuals Plot')
-    ax3.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    
-    # Save plot if output path provided
-    if output_path:
-        plot_path = output_path.replace('.csv', '_model_results.png')
-        plt.savefig(plot_path, dpi=300, bbox_inches='tight')
-        logger.info(f"Plot saved to: {plot_path}")
-        print(f"✓ Plot saved to: {plot_path}")
-    
-    plt.show()
-    
-    # Print summary statistics
-    print("\n" + "="*50)
-    print("MODEL PERFORMANCE SUMMARY")
-    print("="*50)
-    print(f"Training R²: {train_r2:.4f}")
-    print(f"Training MSE: {mean_squared_error(results['y_train'], results['train_predictions']):.4f}")
-    print(f"Training MAE: {mean_absolute_error(results['y_train'], results['train_predictions']):.4f}")
-    print(f"Number of features used: {len(results['features_used'])}")
-    print(f"Number of training samples: {len(results['y_train'])}")
-    print(f"Number of test samples: {len(results['test_predictions'])}")
-    
-    # Additional time-series statistics if dates available
-    if results['train_dates'] is not None and results['test_dates'] is not None:
-        train_period = f"{results['train_dates'].min().strftime('%Y-%m')} to {results['train_dates'].max().strftime('%Y-%m')}"
-        test_period = f"{results['test_dates'].min().strftime('%Y-%m')} to {results['test_dates'].max().strftime('%Y-%m')}"
-        print(f"Training period: {train_period}")
-        print(f"Projection period: {test_period}")
-        print(f"Test predictions range: {results['test_predictions'].min():.2f} to {results['test_predictions'].max():.2f}")
-    
-    logger.info("Plotting complete")
-    print("✓ Results plotting complete")
-
-def processRegion(region, df_region, cfg):
-    """
-    Process a single region through the entire pipeline.
-    
-    Parameters:
-    - region: Region identifier
-    - df_region: Data for specific region
+    - region: MSA region identifier (rcode)
+    - df_region: Data for specific MSA region
     - cfg: Configuration object
+    - target_col: Target column name
     
     Returns:
     - region_results: Dictionary containing all results for the region
     """
-    logger.info(f"Processing region: {region}")
+    logger.info(f"Processing MSA region: {region}")
     print(f"\n{'='*60}")
-    print(f"PROCESSING REGION: {region}")
+    print(f"PROCESSING MSA REGION: {region}")
     print(f"{'='*60}")
     
     try:
@@ -1050,26 +374,9 @@ def processRegion(region, df_region, cfg):
             print(f"⚠️  Skipping {region}: insufficient data ({df_region.shape[0]} rows)")
             return None
         
-        # Create ID list with region column
-        idList = [cfg.regionCol] + cfg.additionalIdList
-        
-        # Check for missing months
-        _, missing_months = checkAllMonthsForRegion(df_region, region, cfg.regionCol, cfg.dateCol, cfg.start_date, cfg.end_date)
-        if missing_months:
-            logger.warning(f"Region {region} missing {len(missing_months)} months")
-            print(f"⚠️  Missing {len(missing_months)} months in {region}")
-        
-        # Step 3: Add features
-        df_features = addAllFeatures(df_region, idList, cfg.dateCol, cfg.featureList, 
-                                   cfg.targetCol, cfg.lagList, cfg.movingAverages, cfg.rateList)
-        
-        # Step 4: Add target
-        df_target, new_target_col = addTarget(df_features, idList, cfg.dateCol, 
-                                            cfg.targetCol, cfg.targetForward)
-        
-        # Step 5: Fill missing values and create train/test split
-        df_filled, train_df, test_df, x_columns = fillMissingValues(df_target, new_target_col, 
-                                                                  idList, cfg.dateCol)
+        # Separate train and test data
+        train_df = df_region[df_region['tag'] == 'train'].copy()
+        test_df = df_region[df_region['tag'] == 'test'].copy()
         
         # Check if we have enough training data
         if len(train_df) < 12:  # At least 1 year of training data
@@ -1077,58 +384,131 @@ def processRegion(region, df_region, cfg):
             print(f"⚠️  Skipping {region}: insufficient training data ({len(train_df)} rows)")
             return None
         
-        # Step 6: Remove skewness and kurtosis
-        train_transformed, test_transformed, transformers = removeSkewnessAndKurtosis(
-            train_df, test_df, x_columns)
+        # Get feature columns (exclude ID, date, target, and tag columns)
+        exclude_cols = [cfg.date_col, cfg.rcode_col, cfg.cs_name_col, 'tag', target_col, 
+                       'HPA1Yfwd', 'HPI1Y_fwd', cfg.hpa12m_col, cfg.hpi_col]
+        x_columns = [col for col in train_df.columns if col not in exclude_cols and not train_df[col].isnull().all()]
         
-        # Step 7: Standardize data
-        train_scaled, test_scaled, scaler = standardizeData(train_transformed, test_transformed, x_columns)
-        
-        # Step 8: Remove high VIF features
-        train_clean, test_clean, final_features = checkAndRemoveHighVIF(train_scaled, test_scaled, x_columns)
-        
-        # Check if we have enough features after VIF removal
-        if len(final_features) < 3:
-            logger.warning(f"Region {region} has too few features after VIF removal ({len(final_features)}), skipping...")
-            print(f"⚠️  Skipping {region}: too few features after preprocessing ({len(final_features)})")
+        # Check if we have target values in training data
+        if target_col not in train_df.columns or train_df[target_col].isnull().all():
+            logger.warning(f"Region {region} has no valid target values, skipping...")
+            print(f"⚠️  Skipping {region}: no valid target values")
             return None
         
-        # Step 9: Setup CV scheme
-        cv_scheme = timeseriesCV()
+        # Remove rows with NaN target values from training data
+        train_df = train_df.dropna(subset=[target_col])
         
-        # Step 10: Train models and create ensemble
-        results = fitAndPredictVotingRegressor(train_clean, test_clean, final_features, 
-                                             cfg.featuresToUse, new_target_col, 
-                                             cfg.AllModelsList, cfg.AllModelParams, cv_scheme, scaler, cfg.dateCol)
+        if len(train_df) < 12:
+            logger.warning(f"Region {region} has insufficient training data after removing NaN targets, skipping...")
+            print(f"⚠️  Skipping {region}: insufficient training data after cleaning")
+            return None
         
-        # Add region-specific information to results
-        results['region'] = region
-        results['data_shape'] = df_region.shape
-        results['training_period'] = (train_df[cfg.dateCol].min(), train_df[cfg.dateCol].max())
-        results['test_period'] = (test_df[cfg.dateCol].min(), test_df[cfg.dateCol].max()) if len(test_df) > 0 else None
-        results['missing_months'] = len(missing_months)
-        results['transformers'] = transformers
-        results['scaler'] = scaler
-        results['original_data'] = df_filled
-        results['train_data'] = train_df
-        results['test_data'] = test_df
+        # Fill missing values in features
+        for col in x_columns:
+            if train_df[col].isnull().any():
+                train_df[col] = train_df[col].fillna(train_df[col].median())
+                test_df[col] = test_df[col].fillna(train_df[col].median())
+        
+        # Prepare X and y
+        X_train = train_df[x_columns]
+        y_train = train_df[target_col]
+        X_test = test_df[x_columns]
+        
+        # Check for sufficient feature diversity
+        if len(x_columns) < 3:
+            logger.warning(f"Region {region} has too few features ({len(x_columns)}), skipping...")
+            print(f"⚠️  Skipping {region}: too few features ({len(x_columns)})")
+            return None
+        
+        # Standardize features
+        scaler = RobustScaler()
+        X_train_scaled = scaler.fit_transform(X_train)
+        X_test_scaled = scaler.transform(X_test)
+        
+        # Simple model selection (use fewer models for efficiency)
+        models = {
+            'Ridge': Ridge(alpha=1.0),
+            'RandomForest': RandomForestRegressor(n_estimators=100, random_state=42),
+            'XGBoost': xgb.XGBRegressor(n_estimators=100, random_state=42, verbosity=0)
+        }
+        
+        # Train models and get predictions
+        model_predictions = {}
+        model_scores = {}
+        
+        for name, model in models.items():
+            try:
+                # Fit model
+                model.fit(X_train_scaled, y_train)
+                
+                # Get predictions
+                train_pred = model.predict(X_train_scaled)
+                test_pred = model.predict(X_test_scaled)
+                
+                model_predictions[name] = {
+                    'train': train_pred,
+                    'test': test_pred
+                }
+                
+                # Calculate training score
+                r2 = r2_score(y_train, train_pred)
+                model_scores[name] = r2
+                
+                logger.info(f"{name} - Training R²: {r2:.4f}")
+                
+            except Exception as e:
+                logger.warning(f"Error training {name} for region {region}: {str(e)}")
+        
+        if not model_predictions:
+            logger.warning(f"No models successfully trained for region {region}")
+            print(f"⚠️  No models trained successfully for {region}")
+            return None
+        
+        # Create ensemble prediction (simple average)
+        if len(model_predictions) > 1:
+            ensemble_train = np.mean([pred['train'] for pred in model_predictions.values()], axis=0)
+            ensemble_test = np.mean([pred['test'] for pred in model_predictions.values()], axis=0)
+        else:
+            # Use the single model prediction
+            single_model = list(model_predictions.values())[0]
+            ensemble_train = single_model['train']
+            ensemble_test = single_model['test']
         
         # Calculate performance metrics
-        train_r2 = r2_score(results['y_train'], results['train_predictions'])
-        train_mse = mean_squared_error(results['y_train'], results['train_predictions'])
-        train_mae = mean_absolute_error(results['y_train'], results['train_predictions'])
+        train_r2 = r2_score(y_train, ensemble_train)
+        train_mse = mean_squared_error(y_train, ensemble_train)
+        train_mae = mean_absolute_error(y_train, ensemble_train)
         
-        results['performance_metrics'] = {
-            'train_r2': train_r2,
-            'train_mse': train_mse,
-            'train_mae': train_mae
+        # Compile results
+        results = {
+            'region': region,
+            'data_shape': df_region.shape,
+            'train_predictions': ensemble_train,
+            'test_predictions': ensemble_test,
+            'model_scores': model_scores,
+            'model_predictions': model_predictions,
+            'X_train': X_train,
+            'y_train': y_train,
+            'X_test': X_test,
+            'features_used': x_columns,
+            'target_column': target_col,
+            'train_dates': train_df[cfg.date_col],
+            'test_dates': test_df[cfg.date_col],
+            'scaler': scaler,
+            'train_data': train_df,
+            'test_data': test_df,
+            'performance_metrics': {
+                'train_r2': train_r2,
+                'train_mse': train_mse,
+                'train_mae': train_mae
+            }
         }
         
         print(f"✓ Region {region} processed successfully")
         print(f"✓ Training R²: {train_r2:.4f}")
-        print(f"✓ Features used: {len(final_features)}")
+        print(f"✓ Features used: {len(x_columns)}")
         print(f"✓ Training samples: {len(train_df)}")
-        print(f"✓ Test samples: {len(results['test_predictions'])}")
+        print(f"✓ Test samples: {len(test_df)}")
         
         return results
         
@@ -1137,592 +517,134 @@ def processRegion(region, df_region, cfg):
         print(f"❌ Error processing region {region}: {str(e)}")
         return None
 
-def plotRegionResults(region, save_plots=True, output_dir=None):
+def generateFinalOutput(merged_df, cfg):
     """
-    Plot results for a specific region.
+    Generate the final output dataframe with all required columns.
     
     Parameters:
-    - region: Region identifier
-    - save_plots: Whether to save plots
-    - output_dir: Directory to save plots
-    
-    Returns:
-    - None (displays plots)
-    """
-    if region not in REGION_RESULTS:
-        print(f"❌ No results found for region: {region}")
-        print(f"Available regions: {list(REGION_RESULTS.keys())}")
-        return
-    
-    results = REGION_RESULTS[region]
-    
-    if results is None:
-        print(f"❌ Region {region} was skipped during processing")
-        return
-    
-    logger.info(f"Plotting results for region: {region}")
-    print(f"Creating plots for region: {region}")
-    
-    # Set up the plotting style
-    plt.style.use('seaborn-v0_8')
-    fig, axes = plt.subplots(2, 2, figsize=(16, 12))
-    fig.suptitle(f'Model Performance Analysis - Region: {region}', fontsize=16, fontweight='bold')
-    
-    # 1. Time-Series Plot: Actual vs Predicted over Time
-    ax1 = axes[0, 0]
-    
-    if results['train_dates'] is not None and results['test_dates'] is not None:
-        # Plot training period (actual vs predicted)
-        train_dates = pd.to_datetime(results['train_dates'])
-        test_dates = pd.to_datetime(results['test_dates'])
-        
-        # Plot actual values for training period
-        ax1.plot(train_dates, results['y_train'], 'b-', label='Actual (Training)', linewidth=2, alpha=0.8)
-        
-        # Plot predicted values for training period
-        ax1.plot(train_dates, results['train_predictions'], 'r--', label='Predicted (Training)', linewidth=2, alpha=0.8)
-        
-        # Plot predicted values for test period (projections only)
-        if len(test_dates) > 0:
-            ax1.plot(test_dates, results['test_predictions'], 'g-', label='Predicted (Projections)', linewidth=2, alpha=0.8)
-        
-        # Add vertical line to separate training and test periods
-        if len(train_dates) > 0 and len(test_dates) > 0:
-            split_date = train_dates.max()
-            ax1.axvline(x=split_date, color='orange', linestyle=':', linewidth=2, alpha=0.7, label='Train/Test Split')
-        
-        ax1.set_xlabel('Date')
-        ax1.set_ylabel('Target Values')
-        ax1.set_title(f'Time Series: {region}')
-        ax1.legend()
-        ax1.grid(True, alpha=0.3)
-        ax1.tick_params(axis='x', rotation=45)
-        
-        # Add performance metrics
-        train_r2 = results['performance_metrics']['train_r2']
-        train_mse = results['performance_metrics']['train_mse']
-        
-        textstr = f'Training R² = {train_r2:.3f}\nTraining MSE = {train_mse:.2f}'
-        props = dict(boxstyle='round', facecolor='white', alpha=0.8)
-        ax1.text(0.02, 0.98, textstr, transform=ax1.transAxes, fontsize=9,
-                verticalalignment='top', bbox=props)
-    else:
-        ax1.text(0.5, 0.5, 'Date information not available', 
-                ha='center', va='center', transform=ax1.transAxes)
-        ax1.set_title(f'Time Series: {region} - Data Not Available')
-    
-    # 2. Training Actual vs Predicted Scatter
-    ax2 = axes[0, 1]
-    ax2.scatter(results['y_train'], results['train_predictions'], alpha=0.6, s=20)
-    
-    # Perfect prediction line
-    min_val = min(results['y_train'].min(), results['train_predictions'].min())
-    max_val = max(results['y_train'].max(), results['train_predictions'].max())
-    ax2.plot([min_val, max_val], [min_val, max_val], 'r--', lw=2, label='Perfect Prediction')
-    
-    ax2.set_xlabel('Actual Values')
-    ax2.set_ylabel('Predicted Values')
-    ax2.set_title(f'Training Set: {region}')
-    ax2.legend()
-    ax2.grid(True, alpha=0.3)
-    
-    # Display R²
-    train_r2 = results['performance_metrics']['train_r2']
-    ax2.text(0.05, 0.95, f'R² = {train_r2:.3f}', transform=ax2.transAxes, 
-             bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
-    
-    # 3. Residuals plot
-    ax3 = axes[1, 0]
-    residuals = results['y_train'] - results['train_predictions']
-    ax3.scatter(results['train_predictions'], residuals, alpha=0.6, s=20)
-    ax3.axhline(y=0, color='r', linestyle='--')
-    ax3.set_xlabel('Predicted Values')
-    ax3.set_ylabel('Residuals')
-    ax3.set_title(f'Residuals Plot: {region}')
-    ax3.grid(True, alpha=0.3)
-    
-    # 4. Model weights visualization
-    ax4 = axes[1, 1]
-    if results['model_weights']:
-        models = list(results['model_weights'].keys())
-        weights = list(results['model_weights'].values())
-        
-        bars = ax4.bar(models, weights)
-        ax4.set_xlabel('Models')
-        ax4.set_ylabel('Approximate Weight')
-        ax4.set_title(f'Model Weights: {region}')
-        ax4.tick_params(axis='x', rotation=45)
-        
-        # Add value labels on bars
-        for bar, weight in zip(bars, weights):
-            height = bar.get_height()
-            ax4.text(bar.get_x() + bar.get_width()/2., height + 0.01,
-                    f'{weight:.3f}', ha='center', va='bottom', fontsize=8)
-    else:
-        ax4.text(0.5, 0.5, 'Model weights not available', 
-                ha='center', va='center', transform=ax4.transAxes)
-        ax4.set_title(f'Model Weights: {region} - Not Available')
-    
-    plt.tight_layout()
-    
-    # Save plot if requested
-    if save_plots and output_dir:
-        plot_path = f"{output_dir}/region_{region}_results.png"
-        plt.savefig(plot_path, dpi=300, bbox_inches='tight')
-        logger.info(f"Plot saved to: {plot_path}")
-        print(f"✓ Plot saved to: {plot_path}")
-    
-    plt.show()
-    
-    # Print detailed summary
-    print(f"\n{'='*50}")
-    print(f"REGION {region} - DETAILED SUMMARY")
-    print(f"{'='*50}")
-    print(f"Data Shape: {results['data_shape']}")
-    print(f"Training Period: {results['training_period'][0].strftime('%Y-%m')} to {results['training_period'][1].strftime('%Y-%m')}")
-    if results['test_period']:
-        print(f"Test Period: {results['test_period'][0].strftime('%Y-%m')} to {results['test_period'][1].strftime('%Y-%m')}")
-    print(f"Missing Months: {results['missing_months']}")
-    print(f"Features Used: {len(results['features_used'])}")
-    print(f"Training Samples: {len(results['y_train'])}")
-    print(f"Test Samples: {len(results['test_predictions'])}")
-    print(f"\nPerformance Metrics:")
-    print(f"  Training R²: {results['performance_metrics']['train_r2']:.4f}")
-    print(f"  Training MSE: {results['performance_metrics']['train_mse']:.4f}")
-    print(f"  Training MAE: {results['performance_metrics']['train_mae']:.4f}")
-    
-    if results['test_predictions'] is not None and len(results['test_predictions']) > 0:
-        print(f"\nTest Predictions:")
-        print(f"  Range: {results['test_predictions'].min():.2f} to {results['test_predictions'].max():.2f}")
-        print(f"  Mean: {results['test_predictions'].mean():.2f}")
-    
-    print(f"\nModel Scores (CV MSE):")
-    for model, score in results['model_scores'].items():
-        print(f"  {model}: {score:.4f}")
-    
-    if results['model_weights']:
-        print(f"\nApproximate Model Weights:")
-        for model, weight in results['model_weights'].items():
-            print(f"  {model}: {weight:.3f}")
-
-def getRegionSummary(region):
-    """
-    Get a summary of model results for a specific region.
-    
-    Parameters:
-    - region: Region identifier
-    
-    Returns:
-    - summary: Dictionary with key metrics
-    """
-    if region not in REGION_RESULTS:
-        print(f"❌ No results found for region: {region}")
-        return None
-    
-    results = REGION_RESULTS[region]
-    
-    if results is None:
-        print(f"❌ Region {region} was skipped during processing")
-        return None
-    
-    summary = {
-        'region': region,
-        'data_shape': results['data_shape'],
-        'training_samples': len(results['y_train']),
-        'test_samples': len(results['test_predictions']),
-        'features_used': len(results['features_used']),
-        'performance_metrics': results['performance_metrics'],
-        'model_scores': results['model_scores'],
-        'model_weights': results['model_weights'],
-        'training_period': results['training_period'],
-        'test_period': results['test_period'],
-        'missing_months': results['missing_months']
-    }
-    
-    return summary
-
-def predictTimeWindow(region, start_date, end_date, plot_results=True, save_plot=False, output_dir=None):
-    """
-    Use the trained model to predict values for a specific time window and plot fitted vs actual.
-    
-    Parameters:
-    - region: Region identifier
-    - start_date: Start date for prediction window (YYYY-MM-DD format)
-    - end_date: End date for prediction window (YYYY-MM-DD format)
-    - plot_results: Whether to create plots (default: True)
-    - save_plot: Whether to save the plot (default: False)
-    - output_dir: Directory to save plot (if save_plot=True)
-    
-    Returns:
-    - prediction_results: Dictionary with predictions and metrics for the time window
-    """
-    if region not in REGION_RESULTS:
-        print(f"❌ No results found for region: {region}")
-        print(f"Available regions: {list(REGION_RESULTS.keys())}")
-        return None
-    
-    results = REGION_RESULTS[region]
-    
-    if results is None:
-        print(f"❌ Region {region} was skipped during processing")
-        return None
-    
-    logger.info(f"Predicting time window {start_date} to {end_date} for region: {region}")
-    print(f"Predicting time window {start_date} to {end_date} for region: {region}")
-    
-    try:
-        # Parse dates
-        start_dt = pd.to_datetime(start_date)
-        end_dt = pd.to_datetime(end_date)
-        
-        # Get the original data for this region
-        region_data = results['original_data'].copy()
-        date_col = results['date_column']
-        
-        # Filter data for the specified time window
-        mask = (region_data[date_col] >= start_dt) & (region_data[date_col] <= end_dt)
-        window_data = region_data[mask].copy()
-        
-        if len(window_data) == 0:
-            print(f"❌ No data found for the specified time window {start_date} to {end_date}")
-            return None
-        
-        print(f"✓ Found {len(window_data)} data points in the specified time window")
-        
-        # Get the features used in training
-        features_used = results['features_used']
-        target_col = results['target_column']
-        
-        # Check if we have the target values for this window (for comparison)
-        has_actual_values = target_col in window_data.columns and window_data[target_col].notna().any()
-        
-        # Prepare features for prediction
-        X_window = window_data[features_used].copy()
-        
-        # Handle any missing values in features (use same approach as training)
-        for col in features_used:
-            if X_window[col].isnull().any():
-                X_window[col] = X_window[col].fillna(X_window[col].median())
-        
-        # Apply the same transformations used in training
-        scaler = results['scaler']
-        if scaler is not None:
-            X_window_scaled = X_window.copy()
-            X_window_scaled[features_used] = scaler.transform(X_window_scaled[features_used])
-        else:
-            X_window_scaled = X_window.copy()
-        
-        # Make predictions using the trained meta learner
-        meta_learner = results['meta_learner']
-        individual_models = results['individual_models']
-        
-        # Get base model predictions first
-        base_predictions = []
-        for name, model in individual_models.items():
-            try:
-                if hasattr(model, 'predict'):
-                    pred = model.predict(X_window_scaled[features_used])
-                else:
-                    # For GridSearchCV objects
-                    pred = model.best_estimator_.predict(X_window_scaled[features_used])
-                base_predictions.append(pred)
-            except Exception as e:
-                logger.warning(f"Error getting predictions from {name}: {str(e)}")
-        
-        if len(base_predictions) == 0:
-            print("❌ Could not get predictions from any base models")
-            return None
-        
-        # Stack base predictions for meta learner
-        meta_X = np.column_stack(base_predictions)
-        
-        # Get final predictions from meta learner
-        final_predictions = meta_learner.predict(meta_X)
-        
-        # Prepare results
-        prediction_results = {
-            'region': region,
-            'time_window': (start_date, end_date),
-            'dates': window_data[date_col],
-            'predictions': final_predictions,
-            'features_used': features_used,
-            'data_points': len(window_data)
-        }
-        
-        # Add actual values if available
-        if has_actual_values:
-            actual_values = window_data[target_col].values
-            # Filter out NaN values for metrics calculation
-            valid_mask = ~np.isnan(actual_values)
-            if valid_mask.any():
-                valid_actual = actual_values[valid_mask]
-                valid_pred = final_predictions[valid_mask]
-                
-                # Calculate metrics
-                mse = mean_squared_error(valid_actual, valid_pred)
-                r2 = r2_score(valid_actual, valid_pred)
-                mae = mean_absolute_error(valid_actual, valid_pred)
-                
-                prediction_results['actual_values'] = actual_values
-                prediction_results['metrics'] = {
-                    'mse': mse,
-                    'r2': r2,
-                    'mae': mae,
-                    'valid_points': len(valid_actual)
-                }
-                
-                print(f"✓ Time window metrics - R²: {r2:.4f}, MSE: {mse:.4f}, MAE: {mae:.4f}")
-            else:
-                prediction_results['actual_values'] = actual_values
-                prediction_results['metrics'] = None
-                print("⚠️  No valid actual values found for metrics calculation")
-        else:
-            prediction_results['actual_values'] = None
-            prediction_results['metrics'] = None
-            print("ℹ️  No actual values available for comparison")
-        
-        # Create plots if requested
-        if plot_results:
-            plt.style.use('seaborn-v0_8')
-            
-            if has_actual_values and prediction_results['metrics'] is not None:
-                # Create 2x2 subplot if we have actual values
-                fig, axes = plt.subplots(2, 2, figsize=(16, 12))
-                fig.suptitle(f'Time Window Prediction Analysis - Region: {region}\n{start_date} to {end_date}', 
-                           fontsize=14, fontweight='bold')
-                
-                # 1. Time series plot
-                ax1 = axes[0, 0]
-                dates = pd.to_datetime(prediction_results['dates'])
-                ax1.plot(dates, actual_values, 'b-', label='Actual', linewidth=2, alpha=0.8)
-                ax1.plot(dates, final_predictions, 'r--', label='Predicted', linewidth=2, alpha=0.8)
-                ax1.set_xlabel('Date')
-                ax1.set_ylabel('Target Values')
-                ax1.set_title('Time Series: Actual vs Predicted')
-                ax1.legend()
-                ax1.grid(True, alpha=0.3)
-                ax1.tick_params(axis='x', rotation=45)
-                
-                # Add metrics
-                metrics = prediction_results['metrics']
-                textstr = f'R² = {metrics["r2"]:.3f}\nMSE = {metrics["mse"]:.2f}\nMAE = {metrics["mae"]:.2f}'
-                props = dict(boxstyle='round', facecolor='white', alpha=0.8)
-                ax1.text(0.02, 0.98, textstr, transform=ax1.transAxes, fontsize=9,
-                        verticalalignment='top', bbox=props)
-                
-                # 2. Scatter plot
-                ax2 = axes[0, 1]
-                valid_mask = ~np.isnan(actual_values)
-                if valid_mask.any():
-                    valid_actual = actual_values[valid_mask]
-                    valid_pred = final_predictions[valid_mask]
-                    ax2.scatter(valid_actual, valid_pred, alpha=0.6, s=30)
-                    
-                    # Perfect prediction line
-                    min_val = min(valid_actual.min(), valid_pred.min())
-                    max_val = max(valid_actual.max(), valid_pred.max())
-                    ax2.plot([min_val, max_val], [min_val, max_val], 'r--', lw=2, label='Perfect Prediction')
-                
-                ax2.set_xlabel('Actual Values')
-                ax2.set_ylabel('Predicted Values')
-                ax2.set_title('Scatter: Actual vs Predicted')
-                ax2.legend()
-                ax2.grid(True, alpha=0.3)
-                
-                # 3. Residuals plot
-                ax3 = axes[1, 0]
-                if valid_mask.any():
-                    residuals = valid_actual - valid_pred
-                    ax3.scatter(valid_pred, residuals, alpha=0.6, s=30)
-                    ax3.axhline(y=0, color='r', linestyle='--')
-                ax3.set_xlabel('Predicted Values')
-                ax3.set_ylabel('Residuals')
-                ax3.set_title('Residuals Plot')
-                ax3.grid(True, alpha=0.3)
-                
-                # 4. Prediction distribution
-                ax4 = axes[1, 1]
-                ax4.hist(final_predictions, bins=20, alpha=0.7, color='red', label='Predicted', density=True)
-                if valid_mask.any():
-                    ax4.hist(valid_actual, bins=20, alpha=0.7, color='blue', label='Actual', density=True)
-                ax4.set_xlabel('Values')
-                ax4.set_ylabel('Density')
-                ax4.set_title('Distribution Comparison')
-                ax4.legend()
-                ax4.grid(True, alpha=0.3)
-                
-            else:
-                # Create single plot if no actual values
-                fig, ax = plt.subplots(1, 1, figsize=(12, 6))
-                fig.suptitle(f'Time Window Predictions - Region: {region}\n{start_date} to {end_date}', 
-                           fontsize=14, fontweight='bold')
-                
-                dates = pd.to_datetime(prediction_results['dates'])
-                ax.plot(dates, final_predictions, 'g-', label='Predicted', linewidth=2, alpha=0.8)
-                ax.set_xlabel('Date')
-                ax.set_ylabel('Predicted Values')
-                ax.set_title('Time Series: Predictions')
-                ax.legend()
-                ax.grid(True, alpha=0.3)
-                ax.tick_params(axis='x', rotation=45)
-                
-                # Add prediction stats
-                pred_stats = f'Mean: {final_predictions.mean():.2f}\nStd: {final_predictions.std():.2f}\nMin: {final_predictions.min():.2f}\nMax: {final_predictions.max():.2f}'
-                props = dict(boxstyle='round', facecolor='white', alpha=0.8)
-                ax.text(0.02, 0.98, pred_stats, transform=ax.transAxes, fontsize=9,
-                       verticalalignment='top', bbox=props)
-            
-            plt.tight_layout()
-            
-            # Save plot if requested
-            if save_plot and output_dir:
-                plot_filename = f"timewindow_{region}_{start_date}_{end_date}_predictions.png"
-                plot_path = f"{output_dir}/{plot_filename}"
-                plt.savefig(plot_path, dpi=300, bbox_inches='tight')
-                logger.info(f"Plot saved to: {plot_path}")
-                print(f"✓ Plot saved to: {plot_path}")
-            
-            plt.show()
-        
-        # Print summary
-        print(f"\n{'='*60}")
-        print(f"TIME WINDOW PREDICTION SUMMARY")
-        print(f"{'='*60}")
-        print(f"Region: {region}")
-        print(f"Time Window: {start_date} to {end_date}")
-        print(f"Data Points: {len(window_data)}")
-        print(f"Features Used: {len(features_used)}")
-        print(f"Prediction Range: {final_predictions.min():.2f} to {final_predictions.max():.2f}")
-        print(f"Prediction Mean: {final_predictions.mean():.2f}")
-        
-        if prediction_results['metrics']:
-            print(f"\nAccuracy Metrics:")
-            metrics = prediction_results['metrics']
-            print(f"  R²: {metrics['r2']:.4f}")
-            print(f"  MSE: {metrics['mse']:.4f}")
-            print(f"  MAE: {metrics['mae']:.4f}")
-            print(f"  Valid Points: {metrics['valid_points']}")
-        
-        logger.info(f"Time window prediction complete for region {region}")
-        print("✓ Time window prediction complete")
-        
-        return prediction_results
-        
-    except Exception as e:
-        logger.error(f"Error in predictTimeWindow: {str(e)}")
-        print(f"❌ Error in time window prediction: {str(e)}")
-        return None
-
-def saveRegionwiseResults(output_path, cfg):
-    """
-    Save all region-wise results to CSV files.
-    
-    Parameters:
-    - output_path: Base output path
+    - merged_df: The merged dataframe with all data
     - cfg: Configuration object
     
     Returns:
-    - None
+    - final_df: Final output dataframe with required columns
     """
-    logger.info("Saving region-wise results...")
-    print("Saving region-wise results...")
+    logger.info("Step 5: Generating final output...")
+    print("Generating final output with all required columns...")
     
-    # Create main results dataframe
-    all_results = []
-    all_predictions = []
+    # Start with the base dataframe
+    final_df = merged_df.copy()
     
+    # Initialize ProjectedHPA1YFwd_MSABaseline column
+    final_df['ProjectedHPA1YFwd_MSABaseline'] = np.nan
+    
+    # Fill in MSA baseline projections from region results
     for region, results in REGION_RESULTS.items():
         if results is None:
             continue
         
-        # Get original data with predictions
-        region_df = results['original_data'].copy()
-        region_df['predictions'] = np.nan
-        region_df.loc[results['train_data'].index, 'predictions'] = results['train_predictions']
-        region_df.loc[results['test_data'].index, 'predictions'] = results['test_predictions']
-        
-        all_predictions.append(region_df)
-        
-        # Create summary row
-        summary_row = {
-            'region': region,
-            'data_rows': results['data_shape'][0],
-            'data_columns': results['data_shape'][1],
-            'training_samples': len(results['y_train']),
-            'test_samples': len(results['test_predictions']),
-            'features_used': len(results['features_used']),
-            'train_r2': results['performance_metrics']['train_r2'],
-            'train_mse': results['performance_metrics']['train_mse'],
-            'train_mae': results['performance_metrics']['train_mae'],
-            'missing_months': results['missing_months'],
-            'training_start': results['training_period'][0],
-            'training_end': results['training_period'][1],
-            'test_start': results['test_period'][0] if results['test_period'] else None,
-            'test_end': results['test_period'][1] if results['test_period'] else None
-        }
-        
-        # Add model scores
-        for model, score in results['model_scores'].items():
-            summary_row[f'{model}_cv_mse'] = score
-        
-        # Add model weights
-        for model, weight in results['model_weights'].items():
-            summary_row[f'{model}_weight'] = weight
-        
-        all_results.append(summary_row)
+        try:
+            # Get region mask
+            region_mask = final_df[cfg.rcode_col] == region
+            
+            # Fill training predictions
+            train_indices = results['train_data'].index
+            for idx, pred in zip(train_indices, results['train_predictions']):
+                if idx in final_df.index:
+                    final_df.loc[idx, 'ProjectedHPA1YFwd_MSABaseline'] = pred
+            
+            # Fill test predictions
+            test_indices = results['test_data'].index
+            for idx, pred in zip(test_indices, results['test_predictions']):
+                if idx in final_df.index:
+                    final_df.loc[idx, 'ProjectedHPA1YFwd_MSABaseline'] = pred
+                    
+        except Exception as e:
+            logger.warning(f"Error filling predictions for region {region}: {str(e)}")
     
-    # Save summary results
-    if all_results:
-        summary_df = pd.DataFrame(all_results)
-        summary_path = output_path.replace('.csv', '_summary.csv')
-        summary_df.to_csv(summary_path, index=False)
-        logger.info(f"Summary results saved to: {summary_path}")
-        print(f"✓ Summary results saved to: {summary_path}")
+    # Ensure USA baseline columns are present (fill with NaN if missing)
+    if 'ProjectedHPA1YFwd_USABaseline' not in final_df.columns:
+        final_df['ProjectedHPA1YFwd_USABaseline'] = np.nan
+    if 'USA_HPA1Yfwd' not in final_df.columns:
+        final_df['USA_HPA1Yfwd'] = np.nan
+    if 'USA_HPI1Yfwd' not in final_df.columns:
+        final_df['USA_HPI1Yfwd'] = np.nan
     
-    # Save detailed predictions
-    if all_predictions:
-        detailed_df = pd.concat(all_predictions, ignore_index=True)
-        detailed_df.to_csv(output_path, index=False)
-        logger.info(f"Detailed results saved to: {output_path}")
-        print(f"✓ Detailed results saved to: {output_path}")
+    # Select and order the required columns
+    required_columns = [
+        cfg.date_col,  # 'Year_Month_Day'
+        cfg.rcode_col,  # 'rcode'
+        cfg.cs_name_col,  # 'cs_name'
+        'tag',
+        'ProjectedHPA1YFwd_USABaseline',
+        'ProjectedHPA1YFwd_MSABaseline',
+        cfg.hpi_col,  # 'HPI'
+        cfg.hpa12m_col,  # 'hpa12m'
+        'HPA1Yfwd',
+        'HPI1Y_fwd',
+        'USA_HPA1Yfwd',
+        'USA_HPI1Yfwd'
+    ]
     
-    print(f"✓ Region-wise results saved successfully")
-    print(f"  - Processed {len(all_results)} regions")
-    print(f"  - Summary file: {summary_path}")
-    print(f"  - Detailed file: {output_path}")
+    # Rename date column to match required output
+    if cfg.date_col != 'Year_Month_Day':
+        final_df = final_df.rename(columns={cfg.date_col: 'Year_Month_Day'})
+        required_columns[0] = 'Year_Month_Day'
+    
+    # Select only the required columns
+    final_df = final_df[required_columns]
+    
+    # Convert date to YYYY-MM-01 format
+    final_df['Year_Month_Day'] = pd.to_datetime(final_df['Year_Month_Day']).dt.to_period('M').dt.start_time
+    
+    # Sort by region and date
+    final_df = final_df.sort_values([cfg.rcode_col, 'Year_Month_Day'])
+    
+    logger.info(f"Final output generated. Shape: {final_df.shape}")
+    print(f"✓ Final output generated. Shape: {final_df.shape}")
+    
+    return final_df
 
 # Main execution function
 def main():
     """
-    Main execution function that runs the entire region-wise pipeline.
+    Main execution function for MSA Baseline model.
     """
     global REGION_RESULTS
     
     try:
-        print("="*60)
-        print("GEOGRAPHICAL HOME PRICE RANKER - REGION-WISE BASELINE")
-        print("="*60)
+        print("="*70)
+        print("MSA BASELINE MODEL WITH USA DATA INTEGRATION")
+        print("="*70)
         
         # Step 1: Initialize configuration
         cfg = CFG(get_user_input=False)  # Set to True to get user input
         
-        # Step 2: Load data and get regions
-        df, unique_regions = loadDataAndGetRegions(cfg.filePath, cfg.dateCol, cfg.start_date, cfg.end_date, cfg.regionCol)
+        # Step 2: Load and merge data
+        merged_df, unique_regions = loadAndMergeData(cfg)
         
-        print(f"\nProcessing {len(unique_regions)} regions...")
+        # Step 3: Create forward-looking variables
+        merged_df = createForwardLookingVariables(merged_df, cfg)
         
-        # Step 3: Process each region
+        # Step 4: Create train/test tags
+        merged_df = createTrainTestTags(merged_df, cfg)
+        
+        # Step 5: Add engineered features
+        merged_df = addAllFeatures(merged_df, cfg)
+        
+        print(f"\nProcessing {len(unique_regions)} MSA regions...")
+        
+        # Step 6: Process each MSA region
         processed_count = 0
         skipped_count = 0
         
         for i, region in enumerate(unique_regions, 1):
-            print(f"\n[{i}/{len(unique_regions)}] Processing region: {region}")
+            print(f"\n[{i}/{len(unique_regions)}] Processing MSA region: {region}")
             
             # Filter data for this region
-            region_df = df[df[cfg.regionCol] == region].copy()
+            region_df = merged_df[merged_df[cfg.rcode_col] == region].copy()
             
             # Process the region
-            region_results = processRegion(region, region_df, cfg)
+            region_results = processRegionMSA(region, region_df, cfg, target_col='HPA1Yfwd')
             
             # Store results
             REGION_RESULTS[region] = region_results
@@ -1733,33 +655,40 @@ def main():
                 skipped_count += 1
         
         print(f"\n{'='*60}")
-        print("PROCESSING COMPLETE")
+        print("MSA PROCESSING COMPLETE")
         print(f"{'='*60}")
-        print(f"✓ Successfully processed: {processed_count} regions")
-        print(f"⚠️  Skipped: {skipped_count} regions")
+        print(f"✓ Successfully processed: {processed_count} MSA regions")
+        print(f"⚠️  Skipped: {skipped_count} MSA regions")
         print(f"📊 Total regions: {len(unique_regions)}")
         
-        # Save results
+        # Step 7: Generate final output
         if processed_count > 0:
-            saveRegionwiseResults(cfg.outputPath, cfg)
+            final_output = generateFinalOutput(merged_df, cfg)
             
-            print(f"\n{'='*40}")
-            print("USAGE INSTRUCTIONS")
-            print(f"{'='*40}")
-            print("To analyze results for a specific region, use:")
-            print("  plotRegionResults('REGION_NAME')")
-            print("  getRegionSummary('REGION_NAME')")
-            print("  predictTimeWindow('REGION_NAME', 'START_DATE', 'END_DATE')")
-            print("\nExamples:")
-            print("  plotRegionResults('MSA_12345')")
-            print("  predictTimeWindow('MSA_12345', '2020-01-01', '2020-12-31')")
-            print(f"\nAvailable regions: {list(REGION_RESULTS.keys())[:5]}{'...' if len(REGION_RESULTS) > 5 else ''}")
+            # Save final output
+            final_output.to_csv(cfg.output_path, index=False)
+            logger.info(f"Final output saved to: {cfg.output_path}")
+            print(f"✓ Final output saved to: {cfg.output_path}")
+            
+            # Display sample of final output
+            print(f"\n{'='*50}")
+            print("SAMPLE OF FINAL OUTPUT")
+            print(f"{'='*50}")
+            print(final_output.head(10))
+            
+            print(f"\nOutput columns: {list(final_output.columns)}")
+            print(f"Output shape: {final_output.shape}")
+            print(f"Date range: {final_output['Year_Month_Day'].min()} to {final_output['Year_Month_Day'].max()}")
+            print(f"Unique MSAs: {final_output['rcode'].nunique()}")
+            print(f"Train records: {(final_output['tag'] == 'train').sum()}")
+            print(f"Test records: {(final_output['tag'] == 'test').sum()}")
+            
         else:
-            print("❌ No regions were successfully processed")
+            print("❌ No MSA regions were successfully processed")
         
-        print(f"\n{'='*60}")
-        print("PIPELINE EXECUTION COMPLETE!")
-        print(f"{'='*60}")
+        print(f"\n{'='*70}")
+        print("MSA BASELINE PIPELINE COMPLETE!")
+        print(f"{'='*70}")
         
     except Exception as e:
         logger.error(f"Pipeline execution failed: {str(e)}")
@@ -1769,221 +698,164 @@ def main():
 if __name__ == "__main__":
     main()
 
-"""
-# ==============================================================================
-# DUMMY EXAMPLE USAGE (COMMENTED OUT)
-# ==============================================================================
-# 
-# Uncomment this section to run with dummy data for testing/demonstration
-# 
-import numpy as np
-import pandas as pd
-from datetime import datetime, timedelta
-
-def create_dummy_data():
-    '''
-    Create dummy example data for testing the region-wise baseline script.
+# Example usage with specific file paths
+def run_with_custom_paths(msa_file, usa_file, output_file):
+    """
+    Run the MSA baseline model with custom file paths.
     
-    Returns:
-    - df: Dummy dataframe with multiple regions and time series data
-    '''
-    print("Creating dummy example data...")
-    
-    # Define regions (example MSA codes)
-    regions = ['MSA_12345', 'MSA_23456', 'MSA_34567', 'MSA_45678', 'MSA_56789']
-    
-    # Create date range (5 years of monthly data)
-    start_date = datetime(2019, 1, 1)
-    end_date = datetime(2023, 12, 31)
-    dates = pd.date_range(start=start_date, end=end_date, freq='MS')
-    
-    # Initialize empty list to store data
-    data = []
-    
-    # Create data for each region
-    for region in regions:
-        # Set different baseline characteristics for each region
-        base_price = np.random.uniform(200000, 500000)  # Base home price
-        growth_rate = np.random.uniform(0.02, 0.08)     # Annual growth rate
-        volatility = np.random.uniform(0.05, 0.15)      # Price volatility
-        
-        for i, date in enumerate(dates):
-            # Simulate time-dependent features
-            months_since_start = i
-            
-            # Target variable: Home price with trend and noise
-            trend_factor = (1 + growth_rate/12) ** months_since_start
-            noise = np.random.normal(0, volatility * base_price * 0.1)
-            seasonal_factor = 1 + 0.02 * np.sin(2 * np.pi * (date.month - 1) / 12)
-            home_price = base_price * trend_factor * seasonal_factor + noise
-            
-            # Feature variables (economic indicators)
-            unemployment_rate = np.random.uniform(3, 8) + 2 * np.sin(2 * np.pi * months_since_start / 24)
-            interest_rate = np.random.uniform(2, 6) + np.sin(2 * np.pi * months_since_start / 36)
-            population_growth = np.random.uniform(0.5, 3.0)
-            median_income = np.random.uniform(45000, 85000) * (1 + 0.02) ** (months_since_start / 12)
-            construction_permits = np.random.poisson(100) + 50
-            inventory_months = np.random.uniform(2, 8)
-            
-            # Add some correlation between features and target
-            unemployment_rate -= home_price / base_price * 0.5  # Lower unemployment in expensive areas
-            interest_rate += np.random.normal(0, 0.2)           # Add some noise to interest rate
-            
-            # Create row
-            row = {
-                'Date': date,
-                'region': region,
-                'home_price': home_price,
-                'unemployment_rate': unemployment_rate,
-                'interest_rate': interest_rate,
-                'population_growth': population_growth,
-                'median_income': median_income,
-                'construction_permits': construction_permits,
-                'inventory_months': inventory_months,
-                'gdp_growth': np.random.uniform(-2, 4),
-                'inflation_rate': np.random.uniform(0, 4),
-                'housing_starts': np.random.poisson(80) + 20
-            }
-            
-            data.append(row)
-    
-    # Create DataFrame
-    df = pd.DataFrame(data)
-    
-    # Sort by region and date
-    df = df.sort_values(['region', 'Date']).reset_index(drop=True)
-    
-    print(f"✓ Created dummy data with {len(df)} rows")
-    print(f"✓ Regions: {df['region'].unique()}")
-    print(f"✓ Date range: {df['Date'].min()} to {df['Date'].max()}")
-    print(f"✓ Features: {[col for col in df.columns if col not in ['Date', 'region', 'home_price']]}")
-    
-    return df
-
-def run_dummy_example():
-    '''
-    Run the complete pipeline with dummy data.
-    '''
+    Parameters:
+    - msa_file: Path to MSA raw data CSV
+    - usa_file: Path to USA raw data CSV  
+    - output_file: Path for output CSV
+    """
     global REGION_RESULTS
+    REGION_RESULTS = {}  # Reset results
     
-    print("="*70)
-    print("RUNNING DUMMY EXAMPLE - REGION-WISE BASELINE")
-    print("="*70)
+    # Create configuration with custom paths
+    cfg = CFG(get_user_input=False)
+    cfg.msa_file_path = msa_file
+    cfg.usa_file_path = usa_file
+    cfg.output_path = output_file
     
-    # Create dummy data
-    df = create_dummy_data()
+    print(f"Running MSA Baseline with:")
+    print(f"  MSA data: {msa_file}")
+    print(f"  USA data: {usa_file}")
+    print(f"  Output: {output_file}")
     
-    # Save dummy data to CSV (optional)
-    dummy_file_path = "dummy_region_data.csv"
-    df.to_csv(dummy_file_path, index=False)
-    print(f"✓ Dummy data saved to: {dummy_file_path}")
-    
-    # Configure for dummy data
-    class DummyCFG:
-        def __init__(self):
-            self.filePath = dummy_file_path
-            self.outputPath = "dummy_MSA_Baseline_results.csv"
-            self.regionCol = "region"
-            self.additionalIdList = []
-            self.dateCol = "Date"
-            self.start_date = "2019-01-01"
-            self.end_date = "2023-12-31"
-            self.featureList = ['unemployment_rate', 'interest_rate', 'population_growth', 
-                              'median_income', 'construction_permits', 'inventory_months',
-                              'gdp_growth', 'inflation_rate', 'housing_starts']
-            self.targetCol = "home_price"
-            self.lagList = [1, 3, 6, 12]  # Reduced for dummy data
-            self.rateList = [1, 3, 6, 12]  # Reduced for dummy data
-            self.movingAverages = [3, 6, 12]  # Reduced for dummy data
-            self.targetForward = 12
-            self.featuresToUse = []
-            
-            # Model configurations
-            self.AllModelsList = ['LinearRegression', 'Ridge', 'RandomForest', 'XGBoost']
-            self.AllModelParams = {
-                'LinearRegression': {},
-                'Ridge': {'alpha': [0.1, 1.0, 10.0]},
-                'RandomForest': {'n_estimators': [50, 100], 'max_depth': [5, 10]},
-                'XGBoost': {'n_estimators': [50, 100], 'max_depth': [3, 6], 'learning_rate': [0.1]}
-            }
-    
-    # Initialize configuration
-    cfg = DummyCFG()
-    
-    # Load data and get regions
-    df_loaded, unique_regions = loadDataAndGetRegions(cfg.filePath, cfg.dateCol, cfg.start_date, cfg.end_date, cfg.regionCol)
-    
-    print(f"\nProcessing {len(unique_regions)} regions...")
-    
-    # Process each region (limit to first 3 for demo)
-    processed_count = 0
-    skipped_count = 0
-    
-    demo_regions = unique_regions[:3]  # Process first 3 regions for demo
-    
-    for i, region in enumerate(demo_regions, 1):
-        print(f"\n[{i}/{len(demo_regions)}] Processing region: {region}")
-        
-        # Filter data for this region
-        region_df = df_loaded[df_loaded[cfg.regionCol] == region].copy()
-        
-        # Process the region
-        region_results = processRegion(region, region_df, cfg)
-        
-        # Store results
-        REGION_RESULTS[region] = region_results
-        
-        if region_results is not None:
-            processed_count += 1
-        else:
-            skipped_count += 1
-    
-    print(f"\n{'='*60}")
-    print("DUMMY EXAMPLE PROCESSING COMPLETE")
-    print(f"{'='*60}")
-    print(f"✓ Successfully processed: {processed_count} regions")
-    print(f"⚠️  Skipped: {skipped_count} regions")
-    print(f"📊 Total regions: {len(demo_regions)}")
-    
-    # Save results
-    if processed_count > 0:
-        saveRegionwiseResults(cfg.outputPath, cfg)
-        
-        print(f"\n{'='*50}")
-        print("EXAMPLE ANALYSIS")
-        print(f"{'='*50}")
-        
-        # Show example analysis for first processed region
-        example_region = list(REGION_RESULTS.keys())[0]
-        print(f"Example analysis for region: {example_region}")
-        
-        # Get summary
-        summary = getRegionSummary(example_region)
-        if summary:
-            print(f"\nRegion {example_region} Summary:")
-            print(f"  Data Shape: {summary['data_shape']}")
-            print(f"  Training R²: {summary['performance_metrics']['train_r2']:.4f}")
-            print(f"  Features Used: {summary['features_used']}")
-            print(f"  Training Samples: {summary['training_samples']}")
-            
-        print(f"\n{'='*50}")
-        print("TO VIEW PLOTS AND DETAILED ANALYSIS:")
-        print(f"{'='*50}")
-        print("Run the following commands:")
-        print(f"  plotRegionResults('{example_region}')")
-        print(f"  getRegionSummary('{example_region}')")
-        print(f"  predictTimeWindow('{example_region}', '2020-01-01', '2020-12-31')")
-        print(f"\nAvailable regions: {list(REGION_RESULTS.keys())}")
-        
-    else:
-        print("❌ No regions were successfully processed in dummy example")
-    
-    print(f"\n{'='*70}")
-    print("DUMMY EXAMPLE COMPLETE!")
-    print(f"{'='*70}")
-    print("This was a demonstration with synthetic data.")
-    print("Replace the dummy data with your actual data to run the real analysis.")
+    # Run the main pipeline
+    main()
 
-# Uncomment the line below to run the dummy example
-# run_dummy_example()
+# Uncomment and modify the line below to run with your specific file paths
+# run_with_custom_paths("path/to/msa_data.csv", "path/to/usa_data.csv", "output_results.csv")
+
 """
+# ==============================================================================
+# EXAMPLE USAGE AND TESTING
+# ==============================================================================
+
+Example of how to use the MSA Baseline script:
+
+1. Basic usage with default settings:
+   ```python
+   # Make sure your data files are in the correct format
+   # MSA data should have columns: Year_Month_Day, rcode, cs_name, HPI, hpa12m
+   # USA data should have columns: Year_Month_Day, ProjectedHPA1YFwd_USABaseline, USA_HPA1Yfwd, USA_HPI1Yfwd
+   
+   main()  # This will use default file paths
+   ```
+
+2. Usage with custom file paths:
+   ```python
+   run_with_custom_paths(
+       msa_file="path/to/your/msa_data.csv",
+       usa_file="path/to/your/usa_data.csv", 
+       output_file="path/to/your/output.csv"
+   )
+   ```
+
+3. The output will be a CSV file with the following columns:
+   - Year_Month_Day: Date in YYYY-MM-01 format
+   - rcode: MSA region code
+   - cs_name: MSA region name
+   - tag: 'train' or 'test' indicator
+   - ProjectedHPA1YFwd_USABaseline: USA baseline projections
+   - ProjectedHPA1YFwd_MSABaseline: MSA baseline projections (model output)
+   - HPI: Actual HPI values
+   - hpa12m: Actual 12-month HPA values  
+   - HPA1Yfwd: 1-year forward HPA (target variable)
+   - HPI1Y_fwd: 1-year forward HPI
+   - USA_HPA1Yfwd: USA 1-year forward HPA
+   - USA_HPI1Yfwd: USA 1-year forward HPI
+
+Expected Input Data Format:
+
+MSA Raw Data (msa_data.csv):
+```
+Year_Month_Day,rcode,cs_name,HPI,hpa12m,[additional_features...]
+2020-01-01,12345,Metro Area 1,250.5,0.045,...
+2020-02-01,12345,Metro Area 1,252.1,0.047,...
+...
+```
+
+USA Raw Data (usa_data.csv):
+```
+Year_Month_Day,ProjectedHPA1YFwd_USABaseline,USA_HPA1Yfwd,USA_HPI1Yfwd
+2020-01-01,0.055,0.052,265.2
+2020-02-01,0.057,0.054,267.1
+...
+```
+
+Key Features:
+- Automatically handles train/test split (last 12 months are test)
+- Creates comprehensive engineered features (lags, moving averages, etc.)
+- Uses ensemble modeling approach with neural network meta-learner
+- Integrates USA-level baseline projections as features
+- Outputs standardized format for downstream analysis
+
+Performance Notes:
+- Processing time depends on number of MSAs and time periods
+- Memory usage scales with dataset size
+- Consider processing in batches for very large datasets
+"""
+
+def create_sample_data_demo():
+    """
+    Create sample data to demonstrate the MSA baseline script functionality.
+    """
+    print("Creating sample MSA and USA data for demonstration...")
+    
+    # Create sample dates
+    dates = pd.date_range(start='2020-01-01', end='2023-12-01', freq='MS')
+    
+    # Sample MSA data
+    msa_regions = ['MSA_12345', 'MSA_23456', 'MSA_34567']
+    region_names = ['Metro Area 1', 'Metro Area 2', 'Metro Area 3']
+    
+    msa_data = []
+    for region, name in zip(msa_regions, region_names):
+        for date in dates:
+            # Simulate realistic housing data
+            base_hpi = 250 + np.random.uniform(-50, 50)
+            seasonal_factor = 1 + 0.02 * np.sin(2 * np.pi * (date.month - 1) / 12)
+            trend_factor = 1 + 0.03 * (date.year - 2020)
+            
+            hpi = base_hpi * seasonal_factor * trend_factor + np.random.normal(0, 5)
+            hpa12m = np.random.uniform(0.02, 0.08) + 0.01 * np.sin(2 * np.pi * (date.month - 1) / 12)
+            
+            msa_data.append({
+                'Year_Month_Day': date,
+                'rcode': region,
+                'cs_name': name,
+                'HPI': hpi,
+                'hpa12m': hpa12m,
+                'unemployment_rate': np.random.uniform(3, 7),
+                'median_income': np.random.uniform(50000, 80000)
+            })
+    
+    msa_df = pd.DataFrame(msa_data)
+    
+    # Sample USA data
+    usa_data = []
+    for date in dates:
+        usa_data.append({
+            'Year_Month_Day': date,
+            'ProjectedHPA1YFwd_USABaseline': np.random.uniform(0.03, 0.07),
+            'USA_HPA1Yfwd': np.random.uniform(0.025, 0.065),
+            'USA_HPI1Yfwd': 260 + np.random.uniform(-10, 10)
+        })
+    
+    usa_df = pd.DataFrame(usa_data)
+    
+    # Save sample data
+    msa_df.to_csv('sample_msa_data.csv', index=False)
+    usa_df.to_csv('sample_usa_data.csv', index=False)
+    
+    print(f"✓ Sample MSA data saved: sample_msa_data.csv ({msa_df.shape})")
+    print(f"✓ Sample USA data saved: sample_usa_data.csv ({usa_df.shape})")
+    print("✓ You can now run: run_with_custom_paths('sample_msa_data.csv', 'sample_usa_data.csv', 'sample_output.csv')")
+    
+    return msa_df, usa_df
+
+# Uncomment the lines below to create and test with sample data
+# create_sample_data_demo()
+# run_with_custom_paths('sample_msa_data.csv', 'sample_usa_data.csv', 'sample_output.csv')
