@@ -2,6 +2,8 @@ import pandas as pd
 import numpy as np
 import warnings
 import logging
+import os
+from pathlib import Path
 from datetime import datetime, timedelta
 from sklearn.preprocessing import StandardScaler, RobustScaler, MinMaxScaler, PowerTransformer
 from sklearn.linear_model import LinearRegression, Ridge, Lasso, ElasticNet
@@ -138,6 +140,218 @@ class CFG:
 # Global variable to store region-wise results
 REGION_RESULTS = {}
 
+def validateAndPreparePaths(cfg):
+    """
+    Validate input file paths and prepare output directory.
+    
+    Parameters:
+    - cfg: Configuration object
+    
+    Returns:
+    - bool: True if all paths are valid, raises exception otherwise
+    """
+    logger.info("Validating file paths and preparing directories...")
+    print("Validating file paths and preparing directories...")
+    
+    try:
+        # Convert paths to Path objects for better handling
+        msa_path = Path(cfg.msa_file_path)
+        usa_path = Path(cfg.usa_file_path)
+        output_path = Path(cfg.output_path)
+        
+        # Validate input files exist
+        if not msa_path.exists():
+            error_msg = f"❌ MSA data file not found: {cfg.msa_file_path}"
+            logger.error(error_msg)
+            raise FileNotFoundError(error_msg)
+        
+        if not usa_path.exists():
+            error_msg = f"❌ USA data file not found: {cfg.usa_file_path}"
+            logger.error(error_msg)
+            raise FileNotFoundError(error_msg)
+        
+        # Validate input files are readable
+        if not os.access(msa_path, os.R_OK):
+            error_msg = f"❌ MSA data file is not readable: {cfg.msa_file_path}"
+            logger.error(error_msg)
+            raise PermissionError(error_msg)
+        
+        if not os.access(usa_path, os.R_OK):
+            error_msg = f"❌ USA data file is not readable: {cfg.usa_file_path}"
+            logger.error(error_msg)
+            raise PermissionError(error_msg)
+        
+        # Validate file extensions
+        valid_extensions = ['.csv', '.CSV']
+        if msa_path.suffix not in valid_extensions:
+            error_msg = f"❌ MSA data file must be CSV format: {cfg.msa_file_path}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+        
+        if usa_path.suffix not in valid_extensions:
+            error_msg = f"❌ USA data file must be CSV format: {cfg.usa_file_path}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+        
+        # Check file sizes (warn if very large)
+        msa_size_mb = msa_path.stat().st_size / (1024 * 1024)
+        usa_size_mb = usa_path.stat().st_size / (1024 * 1024)
+        
+        if msa_size_mb > 500:  # 500 MB
+            logger.warning(f"⚠️  Large MSA file detected: {msa_size_mb:.1f} MB. Processing may take longer.")
+            print(f"⚠️  Large MSA file detected: {msa_size_mb:.1f} MB. Processing may take longer.")
+        
+        if usa_size_mb > 100:  # 100 MB
+            logger.warning(f"⚠️  Large USA file detected: {usa_size_mb:.1f} MB. Processing may take longer.")
+            print(f"⚠️  Large USA file detected: {usa_size_mb:.1f} MB. Processing may take longer.")
+        
+        # Prepare output directory
+        output_dir = output_path.parent
+        if not output_dir.exists():
+            try:
+                output_dir.mkdir(parents=True, exist_ok=True)
+                logger.info(f"Created output directory: {output_dir}")
+                print(f"✓ Created output directory: {output_dir}")
+            except PermissionError:
+                error_msg = f"❌ Cannot create output directory: {output_dir}. Permission denied."
+                logger.error(error_msg)
+                raise PermissionError(error_msg)
+        
+        # Check if output directory is writable
+        if not os.access(output_dir, os.W_OK):
+            error_msg = f"❌ Output directory is not writable: {output_dir}"
+            logger.error(error_msg)
+            raise PermissionError(error_msg)
+        
+        # Check if output file already exists (warn but allow overwrite)
+        if output_path.exists():
+            logger.warning(f"⚠️  Output file already exists and will be overwritten: {cfg.output_path}")
+            print(f"⚠️  Output file already exists and will be overwritten: {cfg.output_path}")
+            
+            # Check if existing file is writable
+            if not os.access(output_path, os.W_OK):
+                error_msg = f"❌ Cannot overwrite existing output file: {cfg.output_path}. Permission denied."
+                logger.error(error_msg)
+                raise PermissionError(error_msg)
+        
+        # Validate output file extension
+        if output_path.suffix.lower() not in ['.csv']:
+            logger.warning(f"⚠️  Output file extension should be .csv: {cfg.output_path}")
+            print(f"⚠️  Output file extension should be .csv: {cfg.output_path}")
+        
+        # Update config with normalized paths (absolute paths)
+        cfg.msa_file_path = str(msa_path.resolve())
+        cfg.usa_file_path = str(usa_path.resolve())
+        cfg.output_path = str(output_path.resolve())
+        
+        logger.info("✓ All file paths validated successfully")
+        print("✓ All file paths validated successfully")
+        print(f"  MSA data: {cfg.msa_file_path} ({msa_size_mb:.1f} MB)")
+        print(f"  USA data: {cfg.usa_file_path} ({usa_size_mb:.1f} MB)")
+        print(f"  Output: {cfg.output_path}")
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"Path validation failed: {str(e)}")
+        print(f"❌ Path validation failed: {str(e)}")
+        raise e
+
+def validateDataIntegrity(msa_df, usa_df, cfg):
+    """
+    Validate the integrity and format of loaded data.
+    
+    Parameters:
+    - msa_df: MSA dataframe
+    - usa_df: USA dataframe  
+    - cfg: Configuration object
+    
+    Returns:
+    - bool: True if data is valid, raises exception otherwise
+    """
+    logger.info("Validating data integrity and format...")
+    print("Validating data integrity and format...")
+    
+    try:
+        # Check if dataframes are not empty
+        if msa_df.empty:
+            error_msg = "❌ MSA data file is empty"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+        
+        if usa_df.empty:
+            error_msg = "❌ USA data file is empty"  
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+        
+        # Check required columns exist in MSA data
+        required_msa_cols = [cfg.date_col, cfg.rcode_col, cfg.cs_name_col, cfg.hpi_col, cfg.hpa12m_col]
+        missing_msa_cols = [col for col in required_msa_cols if col not in msa_df.columns]
+        
+        if missing_msa_cols:
+            error_msg = f"❌ Missing required columns in MSA data: {missing_msa_cols}"
+            logger.error(error_msg)
+            print(f"Available MSA columns: {list(msa_df.columns)}")
+            raise ValueError(error_msg)
+        
+        # Check required columns exist in USA data
+        required_usa_cols = [cfg.date_col]
+        missing_usa_cols = [col for col in required_usa_cols if col not in usa_df.columns]
+        
+        if missing_usa_cols:
+            error_msg = f"❌ Missing required columns in USA data: {missing_usa_cols}"
+            logger.error(error_msg)
+            print(f"Available USA columns: {list(usa_df.columns)}")
+            raise ValueError(error_msg)
+        
+        # Check date column format
+        try:
+            pd.to_datetime(msa_df[cfg.date_col])
+        except Exception:
+            error_msg = f"❌ Invalid date format in MSA data column '{cfg.date_col}'"
+            logger.error(error_msg)
+            print(f"Sample MSA date values: {msa_df[cfg.date_col].head().tolist()}")
+            raise ValueError(error_msg)
+        
+        try:
+            pd.to_datetime(usa_df[cfg.date_col])
+        except Exception:
+            error_msg = f"❌ Invalid date format in USA data column '{cfg.date_col}'"
+            logger.error(error_msg)
+            print(f"Sample USA date values: {usa_df[cfg.date_col].head().tolist()}")
+            raise ValueError(error_msg)
+        
+        # Check for minimum data requirements
+        if len(msa_df) < 12:
+            logger.warning(f"⚠️  MSA data has very few records ({len(msa_df)}). Results may be unreliable.")
+            print(f"⚠️  MSA data has very few records ({len(msa_df)}). Results may be unreliable.")
+        
+        if len(usa_df) < 12:
+            logger.warning(f"⚠️  USA data has very few records ({len(usa_df)}). Results may be unreliable.")
+            print(f"⚠️  USA data has very few records ({len(usa_df)}). Results may be unreliable.")
+        
+        # Check for duplicate region codes in MSA data
+        unique_regions = msa_df[cfg.rcode_col].nunique()
+        total_msa_records = len(msa_df)
+        
+        if unique_regions == 0:
+            error_msg = "❌ No valid MSA regions found in data"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+        
+        logger.info(f"✓ Data integrity validation passed")
+        print("✓ Data integrity validation passed")
+        print(f"  MSA regions: {unique_regions}")
+        print(f"  MSA records: {total_msa_records}")
+        print(f"  USA records: {len(usa_df)}")
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"Data integrity validation failed: {str(e)}")
+        print(f"❌ Data integrity validation failed: {str(e)}")
+        raise e
+
 def loadAndMergeData(cfg):
     """
     Load MSA and USA data, then merge them.
@@ -149,21 +363,50 @@ def loadAndMergeData(cfg):
     - merged_df: Merged dataframe with both MSA and USA data
     - unique_regions: List of unique MSA regions
     """
-    logger.info("Step 1: Loading and merging MSA and USA data...")
+    logger.info("Step 2: Loading and merging MSA and USA data...")
     print("Loading MSA and USA raw data...")
     
     try:
-        # Load MSA data
+        # Load MSA data with error handling
         print(f"Loading MSA data from: {cfg.msa_file_path}")
-        msa_df = pd.read_csv(cfg.msa_file_path)
+        try:
+            msa_df = pd.read_csv(cfg.msa_file_path)
+        except pd.errors.EmptyDataError:
+            raise ValueError(f"❌ MSA data file is empty: {cfg.msa_file_path}")
+        except pd.errors.ParserError as e:
+            raise ValueError(f"❌ Error parsing MSA data file: {cfg.msa_file_path}. {str(e)}")
+        except UnicodeDecodeError:
+            # Try different encodings
+            try:
+                msa_df = pd.read_csv(cfg.msa_file_path, encoding='latin-1')
+                logger.warning("⚠️  MSA file loaded with latin-1 encoding")
+            except:
+                raise ValueError(f"❌ Cannot read MSA data file due to encoding issues: {cfg.msa_file_path}")
+        
         logger.info(f"MSA data loaded. Shape: {msa_df.shape}")
         print(f"MSA data shape: {msa_df.shape}")
         
-        # Load USA data
+        # Load USA data with error handling
         print(f"Loading USA data from: {cfg.usa_file_path}")
-        usa_df = pd.read_csv(cfg.usa_file_path)
+        try:
+            usa_df = pd.read_csv(cfg.usa_file_path)
+        except pd.errors.EmptyDataError:
+            raise ValueError(f"❌ USA data file is empty: {cfg.usa_file_path}")
+        except pd.errors.ParserError as e:
+            raise ValueError(f"❌ Error parsing USA data file: {cfg.usa_file_path}. {str(e)}")
+        except UnicodeDecodeError:
+            # Try different encodings
+            try:
+                usa_df = pd.read_csv(cfg.usa_file_path, encoding='latin-1')
+                logger.warning("⚠️  USA file loaded with latin-1 encoding")
+            except:
+                raise ValueError(f"❌ Cannot read USA data file due to encoding issues: {cfg.usa_file_path}")
+        
         logger.info(f"USA data loaded. Shape: {usa_df.shape}")
         print(f"USA data shape: {usa_df.shape}")
+        
+        # Validate data integrity
+        validateDataIntegrity(msa_df, usa_df, cfg)
         
         # Convert date columns to datetime
         msa_df[cfg.date_col] = pd.to_datetime(msa_df[cfg.date_col])
@@ -210,6 +453,151 @@ def loadAndMergeData(cfg):
         logger.error(f"Error in loadAndMergeData: {str(e)}")
         raise e
 
+def fillMissingDataByRegion(df, cfg):
+    """
+    Fill missing data rows using growth/decay rates region-wise.
+    If a region has no data for entire time range, use column averages for each month.
+    
+    Parameters:
+    - df: Input dataframe with potential missing data
+    - cfg: Configuration object
+    
+    Returns:
+    - df_filled: Dataframe with missing data filled
+    """
+    logger.info("Step 1.5: Filling missing data by region...")
+    print("Filling missing data using growth/decay rates and monthly averages...")
+    
+    df_filled = df.copy()
+    
+    # Define numeric columns to fill (exclude ID and date columns)
+    exclude_cols = [cfg.date_col, cfg.rcode_col, cfg.cs_name_col]
+    numeric_cols = [col for col in df_filled.columns 
+                   if col not in exclude_cols and df_filled[col].dtype in ['float64', 'int64']]
+    
+    print(f"Processing {len(numeric_cols)} numeric columns for missing data...")
+    
+    # Sort data by region and date
+    df_filled = df_filled.sort_values([cfg.rcode_col, cfg.date_col])
+    
+    # Get all unique regions
+    unique_regions = df_filled[cfg.rcode_col].unique()
+    unique_regions = [r for r in unique_regions if pd.notna(r)]
+    
+    # Calculate monthly averages across all regions for fallback
+    print("Calculating monthly averages for fallback imputation...")
+    df_filled['month'] = pd.to_datetime(df_filled[cfg.date_col]).dt.month
+    monthly_averages = {}
+    
+    for col in numeric_cols:
+        monthly_avg = df_filled.groupby('month')[col].mean()
+        monthly_averages[col] = monthly_avg
+    
+    regions_processed = 0
+    regions_with_missing = 0
+    
+    # Process each region
+    for region in unique_regions:
+        region_mask = df_filled[cfg.rcode_col] == region
+        region_df = df_filled[region_mask].copy()
+        
+        region_has_missing = False
+        
+        # Check each numeric column for missing data
+        for col in numeric_cols:
+            missing_count = region_df[col].isnull().sum()
+            
+            if missing_count > 0:
+                region_has_missing = True
+                
+                # Check if entire column is missing for this region
+                if missing_count == len(region_df):
+                    # Fill with monthly averages
+                    print(f"  Region {region}, column {col}: Filling {missing_count} missing values with monthly averages")
+                    
+                    for idx, row in region_df.iterrows():
+                        month = row['month']
+                        if month in monthly_averages[col] and pd.notna(monthly_averages[col][month]):
+                            df_filled.loc[idx, col] = monthly_averages[col][month]
+                        else:
+                            # If monthly average is also NaN, use overall column mean
+                            overall_mean = df_filled[col].mean()
+                            if pd.notna(overall_mean):
+                                df_filled.loc[idx, col] = overall_mean
+                            else:
+                                df_filled.loc[idx, col] = 0  # Last resort
+                
+                else:
+                    # Fill using interpolation and growth rates
+                    region_series = region_df[col].copy()
+                    
+                    # First, try linear interpolation for gaps within the series
+                    region_series_interp = region_series.interpolate(method='linear')
+                    
+                    # For remaining NaNs at the beginning or end, use forward/backward fill
+                    if region_series_interp.isnull().any():
+                        # Forward fill for leading NaNs
+                        region_series_interp = region_series_interp.fillna(method='ffill')
+                        # Backward fill for trailing NaNs
+                        region_series_interp = region_series_interp.fillna(method='bfill')
+                    
+                    # If still NaNs (shouldn't happen but safety check), use monthly averages
+                    if region_series_interp.isnull().any():
+                        for idx in region_series_interp[region_series_interp.isnull()].index:
+                            month = df_filled.loc[idx, 'month']
+                            if month in monthly_averages[col] and pd.notna(monthly_averages[col][month]):
+                                region_series_interp.loc[idx] = monthly_averages[col][month]
+                            else:
+                                overall_mean = df_filled[col].mean()
+                                region_series_interp.loc[idx] = overall_mean if pd.notna(overall_mean) else 0
+                    
+                    # Update the main dataframe
+                    df_filled.loc[region_mask, col] = region_series_interp.values
+                    
+                    print(f"  Region {region}, column {col}: Filled {missing_count} missing values using interpolation")
+        
+        if region_has_missing:
+            regions_with_missing += 1
+        
+        regions_processed += 1
+        
+        if regions_processed % 10 == 0:
+            print(f"  Processed {regions_processed}/{len(unique_regions)} regions...")
+    
+    # Remove the temporary month column
+    df_filled = df_filled.drop('month', axis=1)
+    
+    # Final check for any remaining missing values
+    remaining_missing = df_filled[numeric_cols].isnull().sum().sum()
+    
+    if remaining_missing > 0:
+        print(f"⚠️  Warning: {remaining_missing} missing values still remain. Applying final cleanup...")
+        
+        # Final cleanup: fill any remaining NaNs with column means
+        for col in numeric_cols:
+            col_missing = df_filled[col].isnull().sum()
+            if col_missing > 0:
+                col_mean = df_filled[col].mean()
+                if pd.notna(col_mean):
+                    df_filled[col] = df_filled[col].fillna(col_mean)
+                else:
+                    df_filled[col] = df_filled[col].fillna(0)
+                print(f"  Final cleanup: Filled {col_missing} remaining NaNs in {col}")
+    
+    # Verify no missing values remain in numeric columns
+    final_missing = df_filled[numeric_cols].isnull().sum().sum()
+    
+    logger.info(f"Missing data imputation complete. Regions processed: {regions_processed}")
+    logger.info(f"Regions with missing data: {regions_with_missing}")
+    logger.info(f"Final missing values: {final_missing}")
+    
+    print(f"✓ Missing data imputation complete")
+    print(f"✓ Processed {regions_processed} regions")
+    print(f"✓ {regions_with_missing} regions had missing data")
+    print(f"✓ Final missing values in numeric columns: {final_missing}")
+    
+    return df_filled
+
 def createForwardLookingVariables(df, cfg):
     """
     Create forward-looking variables (HPA1Yfwd, HPI1Y_fwd) for each MSA.
@@ -221,7 +609,7 @@ def createForwardLookingVariables(df, cfg):
     Returns:
     - df: Dataframe with forward-looking variables
     """
-    logger.info("Step 2: Creating forward-looking variables...")
+    logger.info("Step 3: Creating forward-looking variables...")
     print("Creating 1-year forward variables...")
     
     df_enhanced = df.copy()
@@ -251,7 +639,7 @@ def createTrainTestTags(df, cfg):
     Returns:
     - df: Dataframe with train/test tags
     """
-    logger.info("Step 3: Creating train/test tags...")
+    logger.info("Step 4: Creating train/test tags...")
     print("Creating train/test split tags...")
     
     df_tagged = df.copy()
@@ -292,7 +680,7 @@ def addAllFeatures(df, cfg):
     Returns:
     - df: Enhanced dataframe with new features
     """
-    logger.info("Step 4: Adding engineered features...")
+    logger.info("Step 5: Adding engineered features...")
     print("Adding comprehensive feature set...")
     
     df_enhanced = df.copy()
@@ -528,7 +916,7 @@ def generateFinalOutput(merged_df, cfg):
     Returns:
     - final_df: Final output dataframe with required columns
     """
-    logger.info("Step 5: Generating final output...")
+    logger.info("Step 7: Generating final output...")
     print("Generating final output with all required columns...")
     
     # Start with the base dataframe
@@ -619,8 +1007,14 @@ def main():
         # Step 1: Initialize configuration
         cfg = CFG(get_user_input=False)  # Set to True to get user input
         
+        # Step 1.5: Validate file paths and prepare directories
+        validateAndPreparePaths(cfg)
+        
         # Step 2: Load and merge data
         merged_df, unique_regions = loadAndMergeData(cfg)
+        
+        # Step 2.5: Fill missing data by region
+        merged_df = fillMissingDataByRegion(merged_df, cfg)
         
         # Step 3: Create forward-looking variables
         merged_df = createForwardLookingVariables(merged_df, cfg)
@@ -665,10 +1059,35 @@ def main():
         if processed_count > 0:
             final_output = generateFinalOutput(merged_df, cfg)
             
-            # Save final output
-            final_output.to_csv(cfg.output_path, index=False)
-            logger.info(f"Final output saved to: {cfg.output_path}")
-            print(f"✓ Final output saved to: {cfg.output_path}")
+            # Save final output with error handling
+            try:
+                print(f"Saving final output to: {cfg.output_path}")
+                final_output.to_csv(cfg.output_path, index=False)
+                
+                # Verify the file was saved successfully
+                if os.path.exists(cfg.output_path):
+                    file_size = os.path.getsize(cfg.output_path)
+                    logger.info(f"Final output saved successfully to: {cfg.output_path} ({file_size} bytes)")
+                    print(f"✓ Final output saved to: {cfg.output_path} ({file_size / 1024:.1f} KB)")
+                else:
+                    raise FileNotFoundError("Output file was not created successfully")
+                    
+            except PermissionError:
+                error_msg = f"❌ Permission denied: Cannot write to {cfg.output_path}"
+                logger.error(error_msg)
+                print(error_msg)
+                print("  Try running with administrator privileges or choose a different output location.")
+                raise
+            except OSError as e:
+                error_msg = f"❌ OS Error writing file: {str(e)}"
+                logger.error(error_msg)
+                print(error_msg)
+                raise
+            except Exception as e:
+                error_msg = f"❌ Unexpected error saving file: {str(e)}"
+                logger.error(error_msg)
+                print(error_msg)
+                raise
             
             # Display sample of final output
             print(f"\n{'='*50}")
@@ -711,19 +1130,137 @@ def run_with_custom_paths(msa_file, usa_file, output_file):
     global REGION_RESULTS
     REGION_RESULTS = {}  # Reset results
     
-    # Create configuration with custom paths
-    cfg = CFG(get_user_input=False)
-    cfg.msa_file_path = msa_file
-    cfg.usa_file_path = usa_file
-    cfg.output_path = output_file
-    
-    print(f"Running MSA Baseline with:")
-    print(f"  MSA data: {msa_file}")
-    print(f"  USA data: {usa_file}")
-    print(f"  Output: {output_file}")
-    
-    # Run the main pipeline
-    main()
+    try:
+        # Validate input parameters
+        if not msa_file or not isinstance(msa_file, str):
+            raise ValueError("❌ MSA file path must be a non-empty string")
+        if not usa_file or not isinstance(usa_file, str):
+            raise ValueError("❌ USA file path must be a non-empty string")
+        if not output_file or not isinstance(output_file, str):
+            raise ValueError("❌ Output file path must be a non-empty string")
+        
+        # Create configuration with custom paths
+        cfg = CFG(get_user_input=False)
+        cfg.msa_file_path = msa_file
+        cfg.usa_file_path = usa_file
+        cfg.output_path = output_file
+        
+        print(f"Running MSA Baseline with custom paths:")
+        print(f"  MSA data: {msa_file}")
+        print(f"  USA data: {usa_file}")
+        print(f"  Output: {output_file}")
+        
+        # Validate paths before running
+        validateAndPreparePaths(cfg)
+        
+        # Run the main pipeline (skip the initial validation in main since we did it here)
+        print("="*70)
+        print("MSA BASELINE MODEL WITH USA DATA INTEGRATION")
+        print("="*70)
+        
+        # Load and merge data
+        merged_df, unique_regions = loadAndMergeData(cfg)
+        
+        # Fill missing data by region
+        merged_df = fillMissingDataByRegion(merged_df, cfg)
+        
+        # Create forward-looking variables
+        merged_df = createForwardLookingVariables(merged_df, cfg)
+        
+        # Create train/test tags
+        merged_df = createTrainTestTags(merged_df, cfg)
+        
+        # Add engineered features
+        merged_df = addAllFeatures(merged_df, cfg)
+        
+        print(f"\nProcessing {len(unique_regions)} MSA regions...")
+        
+        # Process each MSA region
+        processed_count = 0
+        skipped_count = 0
+        
+        for i, region in enumerate(unique_regions, 1):
+            print(f"\n[{i}/{len(unique_regions)}] Processing MSA region: {region}")
+            
+            # Filter data for this region
+            region_df = merged_df[merged_df[cfg.rcode_col] == region].copy()
+            
+            # Process the region
+            region_results = processRegionMSA(region, region_df, cfg, target_col='HPA1Yfwd')
+            
+            # Store results
+            REGION_RESULTS[region] = region_results
+            
+            if region_results is not None:
+                processed_count += 1
+            else:
+                skipped_count += 1
+        
+        print(f"\n{'='*60}")
+        print("MSA PROCESSING COMPLETE")
+        print(f"{'='*60}")
+        print(f"✓ Successfully processed: {processed_count} MSA regions")
+        print(f"⚠️  Skipped: {skipped_count} MSA regions")
+        print(f"📊 Total regions: {len(unique_regions)}")
+        
+        # Generate final output
+        if processed_count > 0:
+            final_output = generateFinalOutput(merged_df, cfg)
+            
+            # Save final output with error handling
+            try:
+                print(f"Saving final output to: {cfg.output_path}")
+                final_output.to_csv(cfg.output_path, index=False)
+                
+                # Verify the file was saved successfully
+                if os.path.exists(cfg.output_path):
+                    file_size = os.path.getsize(cfg.output_path)
+                    logger.info(f"Final output saved successfully to: {cfg.output_path} ({file_size} bytes)")
+                    print(f"✓ Final output saved to: {cfg.output_path} ({file_size / 1024:.1f} KB)")
+                else:
+                    raise FileNotFoundError("Output file was not created successfully")
+                    
+            except PermissionError:
+                error_msg = f"❌ Permission denied: Cannot write to {cfg.output_path}"
+                logger.error(error_msg)
+                print(error_msg)
+                print("  Try running with administrator privileges or choose a different output location.")
+                raise
+            except OSError as e:
+                error_msg = f"❌ OS Error writing file: {str(e)}"
+                logger.error(error_msg)
+                print(error_msg)
+                raise
+            except Exception as e:
+                error_msg = f"❌ Unexpected error saving file: {str(e)}"
+                logger.error(error_msg)
+                print(error_msg)
+                raise
+            
+            # Display sample of final output
+            print(f"\n{'='*50}")
+            print("SAMPLE OF FINAL OUTPUT")
+            print(f"{'='*50}")
+            print(final_output.head(10))
+            
+            print(f"\nOutput columns: {list(final_output.columns)}")
+            print(f"Output shape: {final_output.shape}")
+            print(f"Date range: {final_output['Year_Month_Day'].min()} to {final_output['Year_Month_Day'].max()}")
+            print(f"Unique MSAs: {final_output['rcode'].nunique()}")
+            print(f"Train records: {(final_output['tag'] == 'train').sum()}")
+            print(f"Test records: {(final_output['tag'] == 'test').sum()}")
+            
+        else:
+            print("❌ No MSA regions were successfully processed")
+        
+        print(f"\n{'='*70}")
+        print("MSA BASELINE PIPELINE COMPLETE!")
+        print(f"{'='*70}")
+        
+    except Exception as e:
+        logger.error(f"Custom paths pipeline execution failed: {str(e)}")
+        print(f"❌ Pipeline failed: {str(e)}")
+        raise e
 
 # Uncomment and modify the line below to run with your specific file paths
 # run_with_custom_paths("path/to/msa_data.csv", "path/to/usa_data.csv", "output_results.csv")
