@@ -957,6 +957,11 @@ def generateFinalOutput(merged_df, cfg):
     if 'USA_HPI1Yfwd' not in final_df.columns:
         final_df['USA_HPI1Yfwd'] = np.nan
     
+    # Set USA baseline columns to NaN for test rows
+    test_mask = final_df['tag'] == 'test'
+    final_df.loc[test_mask, 'USA_HPA1Yfwd'] = np.nan
+    final_df.loc[test_mask, 'USA_HPI1Yfwd'] = np.nan
+    
     # Select and order the required columns
     required_columns = [
         cfg.date_col,  # 'Year_Month_Day'
