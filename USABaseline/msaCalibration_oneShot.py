@@ -862,56 +862,52 @@ def fillMissingDataByRegion(df, cfg):
         
         # Check each numeric column for missing data
         for col in numeric_cols:
-            missing_count = region_df[col].isnull().sum()
+            col_data = region_df[col]
+            if isinstance(col_data, pd.DataFrame):
+                col_data = col_data.iloc[:, 0]
+            missing_count = col_data.isnull().sum()
             
             if missing_count > 0:
                 region_has_missing = True
-                
-                # Check if entire column is missing for this region
-                if missing_count == len(region_df):
-                    # Fill with monthly averages
-                    print(f"  Region {region}, column {col}: Filling {missing_count} missing values with monthly averages")
-                    
-                    for idx, row in region_df.iterrows():
-                        month = row['month']
-                        if month in monthly_averages[col] and pd.notna(monthly_averages[col][month]):
-                            df_filled.loc[idx, col] = monthly_averages[col][month]
+            
+            # Check if entire column is missing for this region
+            if missing_count == len(region_df):
+                # Fill with monthly averages
+                print(f"  Region {region}, column {col}: Filling {missing_count} missing values with monthly averages")
+                for idx, row in region_df.iterrows():
+                    month = row['month']
+                    if month in monthly_averages[col] and pd.notna(monthly_averages[col][month]):
+                        df_filled.loc[idx, col] = monthly_averages[col][month]
+                    else:
+                        # If monthly average is also NaN, use overall column mean
+                        overall_mean = df_filled[col].mean()
+                        if pd.notna(overall_mean):
+                            df_filled.loc[idx, col] = overall_mean
                         else:
-                            # If monthly average is also NaN, use overall column mean
+                            df_filled.loc[idx, col] = 0  # Last resort
+            else:
+                # Fill using interpolation and growth rates
+                region_series = col_data.copy()
+                # First, try linear interpolation for gaps within the series
+                region_series_interp = region_series.interpolate(method='linear')
+                # For remaining NaNs at the beginning or end, use forward/backward fill
+                if region_series_interp.isnull().any():
+                    # Forward fill for leading NaNs
+                    region_series_interp = region_series_interp.fillna(method='ffill')
+                    # Backward fill for trailing NaNs
+                    region_series_interp = region_series_interp.fillna(method='bfill')
+                # If still NaNs (shouldn't happen but safety check), use monthly averages
+                if region_series_interp.isnull().any():
+                    for idx in region_series_interp[region_series_interp.isnull()].index:
+                        month = df_filled.loc[idx, 'month']
+                        if month in monthly_averages[col] and pd.notna(monthly_averages[col][month]):
+                            region_series_interp.loc[idx] = monthly_averages[col][month]
+                        else:
                             overall_mean = df_filled[col].mean()
-                            if pd.notna(overall_mean):
-                                df_filled.loc[idx, col] = overall_mean
-                            else:
-                                df_filled.loc[idx, col] = 0  # Last resort
-                
-                else:
-                    # Fill using interpolation and growth rates
-                    region_series = region_df[col].copy()
-                    
-                    # First, try linear interpolation for gaps within the series
-                    region_series_interp = region_series.interpolate(method='linear')
-                    
-                    # For remaining NaNs at the beginning or end, use forward/backward fill
-                    if region_series_interp.isnull().any():
-                        # Forward fill for leading NaNs
-                        region_series_interp = region_series_interp.fillna(method='ffill')
-                        # Backward fill for trailing NaNs
-                        region_series_interp = region_series_interp.fillna(method='bfill')
-                    
-                    # If still NaNs (shouldn't happen but safety check), use monthly averages
-                    if region_series_interp.isnull().any():
-                        for idx in region_series_interp[region_series_interp.isnull()].index:
-                            month = df_filled.loc[idx, 'month']
-                            if month in monthly_averages[col] and pd.notna(monthly_averages[col][month]):
-                                region_series_interp.loc[idx] = monthly_averages[col][month]
-                            else:
-                                overall_mean = df_filled[col].mean()
-                                region_series_interp.loc[idx] = overall_mean if pd.notna(overall_mean) else 0
-                    
-                    # Update the main dataframe
-                    df_filled.loc[region_mask, col] = region_series_interp.values
-                    
-                    print(f"  Region {region}, column {col}: Filled {missing_count} missing values using interpolation")
+                            region_series_interp.loc[idx] = overall_mean if pd.notna(overall_mean) else 0
+                # Update the main dataframe
+                df_filled.loc[region_mask, col] = region_series_interp.values
+                print(f"  Region {region}, column {col}: Filled {missing_count} missing values using interpolation")
         
         if region_has_missing:
             regions_with_missing += 1
@@ -1195,3 +1191,58 @@ run_with_custom_paths(
     end_date="2025-01-01"                         # End date
 )
 '''
+
+# --- TESTING CODE ---
+def test_pipeline_with_dummy_data():
+    import pandas as pd
+    # Create dummy MSA baseline data
+    msa_baseline = pd.DataFrame({
+        'rcode': ['A']*14 + ['B']*14,
+        'cs_name': ['Alpha']*14 + ['Beta']*14,
+        'Year_Month_Day': pd.date_range('2020-01-01', periods=14, freq='MS').tolist()*2,
+        'HPI': list(range(100, 114)) + list(range(200, 214)),
+        'hpa12m': [1.0]*14 + [2.0]*14,
+        'USA_HPI1Yfwd': list(range(1000, 1014)) + list(range(2000, 2014)),
+        'USA_HPA1Yfwd': [10.0]*14 + [20.0]*14,
+        'HPA1Yfwd': [1.1]*12 + [None]*2 + [2.2]*12 + [None]*2,
+        'ProjectedHPA1YFwd_USABaseline': [5.0]*14 + [6.0]*14,
+        'ProjectedHPA1YFwd_MSABaseline': [7.0]*14 + [8.0]*14
+    })
+    msa_baseline.to_csv('MSA_Baseline_Results.csv', index=False)
+
+    # Create dummy new MSA data
+    msa_new = pd.DataFrame({
+        'rcode': ['A']*14 + ['B']*14,
+        'cs_name': ['Alpha']*14 + ['Beta']*14,
+        'Year_Month_Day': pd.date_range('2020-01-01', periods=14, freq='MS').tolist()*2,
+        'feature1': [0.1]*28,
+        'feature2': [0.2]*28
+    })
+    msa_new.to_csv('msa_data.csv', index=False)
+
+    # Run the pipeline
+    run_with_custom_paths(
+        msa_baseline_path='MSA_Baseline_Results.csv',
+        msa_new_data_path='msa_data.csv',
+        output_path='MSA_Calibration_Results.csv',
+        date_col='Year_Month_Day',
+        id_columns=['rcode', 'cs_name'],
+        msa_baseline_columns=[],
+        target_column='HPA1Yfwd',
+        msa_hpi_col='HPI',
+        msa_hpa12m_col='hpa12m',
+        usa_hpi_col='USA_HPI',
+        usa_hpa12m_col='USA_HPA12M',
+        usa_hpi12mF_col='USA_HPI1Yfwd',
+        usa_hpa12mF_col='USA_HPA1Yfwd',
+        hpi1y_fwd_col='HPI1Y_fwd',
+        usa_projection_col='ProjectedHPA1YFwd_USABaseline',
+        msa_projection_col='ProjectedHPA1YFwd_MSABaseline',
+        msa_new_columns=['feature1', 'feature2'],
+        start_date='2020-01-01',
+        end_date='2021-02-01'
+    )
+    print('Test pipeline run complete. Output saved to MSA_Calibration_Results.csv')
+
+# Uncomment to run the test
+test_pipeline_with_dummy_data()
