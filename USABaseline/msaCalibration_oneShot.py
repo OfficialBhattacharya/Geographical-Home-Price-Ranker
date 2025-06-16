@@ -384,11 +384,17 @@ def loadAndMergeData(cfg):
         msa_new_df = msa_new_df[(msa_new_df[cfg.date_col] >= start_dt) & 
                                (msa_new_df[cfg.date_col] <= end_dt)].copy()
         
+        # Calculate current USA HPI and HPA by shifting forward-looking columns
+        msa_baseline_df[cfg.usa_hpi_col] = msa_baseline_df.groupby(cfg.id_columns[0])[cfg.usa_hpi12mF_col].shift(-12)
+        msa_baseline_df[cfg.usa_hpa12m_col] = msa_baseline_df.groupby(cfg.id_columns[0])[cfg.usa_hpa12mF_col].shift(-12)
+        
         # Select required columns from MSA baseline
         required_baseline_cols = cfg.id_columns + [cfg.date_col] + cfg.msa_baseline_columns + [
             cfg.target_column,
             cfg.usa_hpi_col,
-            cfg.usa_hpa12m_col
+            cfg.usa_hpa12m_col,
+            cfg.usa_hpi12mF_col,
+            cfg.usa_hpa12mF_col
         ]
         
         # Verify required columns exist in MSA baseline
