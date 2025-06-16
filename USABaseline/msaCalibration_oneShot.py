@@ -387,12 +387,25 @@ def loadAndMergeData(cfg):
             logger.error(error_msg)
             raise ValueError(error_msg)
         
-        # Check for NaN values in baseline columns
+        # Check for regions with missing baseline projections
+        regions_with_missing = msa_baseline_df[msa_baseline_df['ProjectedHPA1YFwd_MSABaseline'].isnull()][cfg.rcode_col].unique()
+        if len(regions_with_missing) > 0:
+            logger.warning(f"Found {len(regions_with_missing)} regions with missing baseline projections")
+            print(f"\n⚠️  Found {len(regions_with_missing)} regions with missing baseline projections:")
+            for region in regions_with_missing:
+                print(f"  - Region: {region}")
+            
+            # Remove regions with missing baseline projections
+            msa_baseline_df = msa_baseline_df[~msa_baseline_df[cfg.rcode_col].isin(regions_with_missing)]
+            logger.info(f"Removed {len(regions_with_missing)} regions with missing baseline projections")
+            print(f"✓ Removed {len(regions_with_missing)} regions with missing baseline projections")
+        
+        # Check for NaN values in remaining baseline columns
         baseline_numeric_cols = ['ProjectedHPA1YFwd_USABaseline', 'ProjectedHPA1YFwd_MSABaseline']
         for col in baseline_numeric_cols:
             nan_count = msa_baseline_df[col].isnull().sum()
             if nan_count > 0:
-                error_msg = f"❌ Found {nan_count} NaN values in {col} in MSA baseline data"
+                error_msg = f"❌ Found {nan_count} NaN values in {col} in MSA baseline data after removing regions with missing projections"
                 logger.error(error_msg)
                 raise ValueError(error_msg)
         
@@ -413,6 +426,9 @@ def loadAndMergeData(cfg):
         
         logger.info(f"Data merged successfully. Shape: {merged_df.shape}")
         logger.info(f"Found {len(unique_regions)} unique MSA regions")
+        print(f"\n✓ Data merged successfully")
+        print(f"✓ Final dataset contains {len(unique_regions)} unique MSA regions")
+        print(f"✓ Final dataset shape: {merged_df.shape}")
         
         return merged_df, unique_regions
         
