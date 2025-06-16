@@ -862,6 +862,8 @@ def fillMissingDataByRegion(df, cfg):
         
         # Check each numeric column for missing data
         for col in numeric_cols:
+            if col == cfg.target_column:
+                continue  # Don't fill the target column!
             col_data = region_df[col]
             if isinstance(col_data, pd.DataFrame):
                 col_data = col_data.iloc[:, 0]
@@ -906,7 +908,7 @@ def fillMissingDataByRegion(df, cfg):
                             overall_mean = df_filled[col].mean()
                             region_series_interp.loc[idx] = overall_mean if pd.notna(overall_mean) else 0
                 # Update the main dataframe
-                df_filled.loc[region_mask, col] = region_series_interp.values
+                df_filled.loc[region_df.index, col] = region_series_interp.values
                 print(f"  Region {region}, column {col}: Filled {missing_count} missing values using interpolation")
         
         if region_has_missing:
