@@ -703,8 +703,92 @@ def generateFinalOutput(merged_df, cfg):
     
     return final_df
 
-# Global variable to store region results
-REGION_RESULTS = {}
+def run_with_custom_paths(
+    msa_baseline_path,
+    msa_new_data_path,
+    output_path,
+    date_col="Year_Month_Day",
+    rcode_col="rcode",
+    cs_name_col="cs_name",
+    hpi_col="HPI",
+    hpa12m_col="hpa12m",
+    start_date="1990-01-01",
+    end_date="2025-01-01",
+    additional_features=None,
+    all_models_list=None,
+    all_model_params=None,
+    grid_specs=None,
+    title_specs=None
+):
+    """
+    Run the MSA Calibration pipeline with custom file paths and configuration parameters.
+    """
+    global REGION_RESULTS
+    logger.info("Running with custom paths and parameters...")
+
+    # Set up config
+    class CustomCFG:
+        def __init__(self):
+            self.msa_baseline_path = msa_baseline_path
+            self.msa_new_data_path = msa_new_data_path
+            self.output_path = output_path
+            self.date_col = date_col
+            self.rcode_col = rcode_col
+            self.cs_name_col = cs_name_col
+            self.hpi_col = hpi_col
+            self.hpa12m_col = hpa12m_col
+            self.start_date = start_date
+            self.end_date = end_date
+            self.additional_features = additional_features or []
+            self.AllModelsList = all_models_list or [
+                'Ridge',
+                'RandomForest',
+                'XGBoost'
+            ]
+            self.AllModelParams = all_model_params or {
+                'Ridge': {'alpha': [0.1, 1.0, 10.0]},
+                'RandomForest': {'n_estimators': [100, 200], 'max_depth': [10, 20, None]},
+                'XGBoost': {'n_estimators': [100, 200], 'max_depth': [6, 10], 'learning_rate': [0.01, 0.1]}
+            }
+            self.grid_specs = grid_specs or {
+                'visible': True,
+                'which': 'both',
+                'linestyle': '--',
+                'color': 'lightgrey',
+                'linewidth': 0.75
+            }
+            self.title_specs = title_specs or {
+                'fontsize': 9,
+                'fontweight': 'bold',
+                'color': '#992600',
+            }
+    cfg = CustomCFG()
+
+    # Run pipeline
+    merged_df, unique_regions = loadAndMergeData(cfg)
+    merged_df = createTrainTestTags(merged_df, cfg)
+    merged_df = addAllFeatures(merged_df, cfg)
+
+    processed_count = 0
+    skipped_count = 0
+    REGION_RESULTS = {}
+    for i, region in enumerate(unique_regions, 1):
+        region_df = merged_df[merged_df[cfg.rcode_col] == region].copy()
+        region_results = processRegionMSA(region, region_df, cfg, target_col='HPA1Yfwd')
+        REGION_RESULTS[region] = region_results
+        if region_results is not None:
+            processed_count += 1
+        else:
+            skipped_count += 1
+
+    if processed_count > 0:
+        final_output = generateFinalOutput(merged_df, cfg)
+        final_output.to_csv(cfg.output_path, index=False)
+        logger.info(f"Results saved to: {cfg.output_path}")
+        return final_output
+    else:
+        logger.error("No MSA regions were successfully processed")
+        return None
 
 def main():
     """

@@ -1409,219 +1409,237 @@ def main():
         print(f"❌ Pipeline failed: {str(e)}")
         raise e
 
+def run_with_custom_paths(usa_file, output_file, config=None):
+    """
+    Run the USA baseline model with custom file paths and configurations.
+    
+    Parameters:
+    - usa_file: Path to the input USA data CSV file
+    - output_file: Path to save the output results CSV file
+    - config: Dictionary containing custom configurations (optional)
+              If not provided, default configurations will be used
+    
+    Returns:
+    - None (saves results to output_file)
+    """
+    global USA_RESULTS
+    
+    try:
+        print("="*60)
+        print("GEOGRAPHICAL HOME PRICE RANKER - USA BASELINE (CUSTOM CONFIG)")
+        print("="*60)
+        
+        # Create custom configuration
+        class CustomCFG:
+            def __init__(self, usa_file, output_file, config=None):
+                # Default configurations
+                self.filePath = usa_file
+                self.outputPath = output_file
+                self.idList = []
+                self.dateCol = "Date"
+                self.start_date = "1990-01-01"
+                self.end_date = "2025-01-01"
+                self.featureList = []
+                self.targetCol = ""
+                self.lagList = [1,3,6,8,12,15,18,24,36,48,60]
+                self.rateList = [1,2,3,4,5,6,7,8,9,10,11,12]
+                self.movingAverages = [1,3,6,9,12,18,24]
+                self.targetForward = 12
+                self.featuresToUse = []
+                
+                # Model configurations
+                self.AllModelsList = [
+                    'LinearRegression',
+                    'Ridge',
+                    'Lasso',
+                    'ElasticNet',
+                    'RandomForest',
+                    'XGBoost',
+                    'LightGBM',
+                    'GradientBoosting'
+                ]
+                
+                self.AllModelParams = {
+                    'LinearRegression': {},
+                    'Ridge': {'alpha': [0.1, 1.0, 10.0]},
+                    'Lasso': {'alpha': [0.1, 1.0, 10.0]},
+                    'ElasticNet': {'alpha': [0.1, 1.0, 10.0], 'l1_ratio': [0.1, 0.5, 0.9]},
+                    'RandomForest': {'n_estimators': [100, 200], 'max_depth': [10, 20, None]},
+                    'XGBoost': {'n_estimators': [100, 200], 'max_depth': [6, 10], 'learning_rate': [0.01, 0.1]},
+                    'LightGBM': {'n_estimators': [100, 200], 'max_depth': [6, 10], 'learning_rate': [0.01, 0.1]},
+                    'GradientBoosting': {'n_estimators': [100, 200], 'max_depth': [6, 10], 'learning_rate': [0.01, 0.1]}
+                }
+                
+                # Override with custom configurations if provided
+                if config:
+                    for key, value in config.items():
+                        if hasattr(self, key):
+                            setattr(self, key, value)
+        
+        # Initialize configuration with custom paths and config
+        cfg = CustomCFG(usa_file, output_file, config)
+        
+        # Step 2: Load and check data
+        df = loadDataAndCheckAllMonths(cfg.filePath, cfg.dateCol, cfg.start_date, cfg.end_date)
+        
+        # Step 3: Add features
+        df_features = addAllFeatures(df, cfg.idList, cfg.dateCol, cfg.featureList, 
+                                   cfg.targetCol, cfg.lagList, cfg.movingAverages, cfg.rateList)
+        
+        # Step 4: Add target
+        df_target, new_target_col = addTarget(df_features, cfg.idList, cfg.dateCol, 
+                                            cfg.targetCol, cfg.targetForward)
+        
+        # Step 5: Fill missing values and create train/test split
+        df_filled, train_df, test_df, x_columns = fillMissingValues(df_target, new_target_col, 
+                                                                  cfg.idList, cfg.dateCol)
+        
+        # Step 6: Remove skewness and kurtosis
+        train_transformed, test_transformed, transformers = removeSkewnessAndKurtosis(
+            train_df, test_df, x_columns)
+        
+        # Step 7: Standardize data
+        train_scaled, test_scaled, scaler = standardizeData(train_transformed, test_transformed, x_columns)
+        
+        # Step 8: Remove high VIF features
+        train_clean, test_clean, final_features = checkAndRemoveHighVIF(train_scaled, test_scaled, x_columns)
+        
+        # Step 9: Setup CV scheme
+        cv_scheme = timeseriesCV()
+        
+        # Step 10: Train models and create ensemble
+        results = fitAndPredictVotingRegressor(train_clean, test_clean, final_features, 
+                                             cfg.featuresToUse, new_target_col, 
+                                             cfg.AllModelsList, cfg.AllModelParams, cv_scheme, scaler, cfg.dateCol)
+        
+        # Store results globally for time window predictions
+        USA_RESULTS.update(results)
+        USA_RESULTS['original_data'] = df_filled
+        USA_RESULTS['train_data'] = train_df
+        USA_RESULTS['test_data'] = test_df
+        USA_RESULTS['scaler'] = scaler
+        USA_RESULTS['transformers'] = transformers
+        
+        # Step 11: Plot results
+        plotResults(results, cfg.outputPath)
+        
+        # Save final results
+        final_df = df_filled.copy()
+        final_df['predictions'] = np.nan
+        final_df.loc[train_df.index, 'predictions'] = results['train_predictions']
+        final_df.loc[test_df.index, 'predictions'] = results['test_predictions']
+        
+        final_df.to_csv(cfg.outputPath, index=False)
+        logger.info(f"Results saved to: {cfg.outputPath}")
+        print(f"✓ Final results saved to: {cfg.outputPath}")
+        
+        print("\n" + "="*60)
+        print("PIPELINE EXECUTION COMPLETE!")
+        print("="*60)
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"Pipeline execution failed: {str(e)}")
+        print(f"❌ Pipeline failed: {str(e)}")
+        return False
+
+"""
+# ==============================================================================
+# EXAMPLE USAGE WITH CUSTOM PATHS AND CONFIGURATIONS
+# ==============================================================================
+# 
+# Example 1: Basic usage with custom paths
+# run_with_custom_paths(
+#     usa_file="D:\\Geographical-Home-Price-Ranker\\AllProcessedFIles\\unified_monthly_data.csv",
+#     output_file="D:\\Geographical-Home-Price-Ranker\\AllProcessedFIles\\USA_Baseline_20250101.csv"
+# )
+# 
+# Example 2: Advanced usage with custom configurations
+# custom_config = {
+#     'start_date': '2010-01-01',
+#     'end_date': '2024-12-31',
+#     'featureList': ['unemployment_rate', 'interest_rate', 'gdp_growth', 'inflation_rate'],
+#     'targetCol': 'home_price',
+#     'lagList': [1, 3, 6, 12, 24],
+#     'rateList': [1, 3, 6, 12],
+#     'movingAverages': [3, 6, 12],
+#     'targetForward': 12,
+#     'featuresToUse': ['unemployment_rate', 'interest_rate'],
+#     'AllModelsList': ['LinearRegression', 'Ridge', 'RandomForest', 'XGBoost'],
+#     'AllModelParams': {
+#         'LinearRegression': {},
+#         'Ridge': {'alpha': [0.1, 1.0, 10.0]},
+#         'RandomForest': {'n_estimators': [100, 200], 'max_depth': [10, 20]},
+#         'XGBoost': {'n_estimators': [100, 200], 'max_depth': [6, 10], 'learning_rate': [0.01, 0.1]}
+#     }
+# }
+# 
+# run_with_custom_paths(
+#     usa_file="D:\\Geographical-Home-Price-Ranker\\AllProcessedFIles\\unified_monthly_data.csv",
+#     output_file="D:\\Geographical-Home-Price-Ranker\\AllProcessedFIles\\USA_Baseline_Custom_20250101.csv",
+#     config=custom_config
+# )
+# 
+# Example 3: Minimal configuration with only essential parameters
+# minimal_config = {
+#     'start_date': '2020-01-01',
+#     'end_date': '2024-12-31',
+#     'featureList': ['unemployment_rate', 'interest_rate'],
+#     'targetCol': 'home_price',
+#     'AllModelsList': ['LinearRegression', 'RandomForest']
+# }
+# 
+# run_with_custom_paths(
+#     usa_file="D:\\Geographical-Home-Price-Ranker\\AllProcessedFIles\\unified_monthly_data.csv",
+#     output_file="D:\\Geographical-Home-Price-Ranker\\AllProcessedFIles\\USA_Baseline_Minimal_20250101.csv",
+#     config=minimal_config
+# )
+"""
 
 if __name__ == "__main__":
     main()
 
-"""
-# ==============================================================================
-# DUMMY EXAMPLE USAGE (COMMENTED OUT)
-# ==============================================================================
-# 
-# Uncomment this section to run with dummy data for testing/demonstration
-# 
-import numpy as np
-import pandas as pd
-from datetime import datetime, timedelta
 
-def create_dummy_usa_data():
-    '''
-    Create dummy example data for testing the USA baseline script.
-    
-    Returns:
-    - df: Dummy dataframe with USA time series data
-    '''
-    print("Creating dummy USA example data...")
-    
-    # Create date range (5 years of monthly data)
-    start_date = datetime(2019, 1, 1)
-    end_date = datetime(2023, 12, 31)
-    dates = pd.date_range(start=start_date, end=end_date, freq='MS')
-    
-    # Initialize empty list to store data
-    data = []
-    
-    # Set USA baseline characteristics
-    base_price = 350000  # Base USA home price
-    growth_rate = 0.04   # Annual growth rate
-    volatility = 0.12    # Price volatility
-    
-    for i, date in enumerate(dates):
-        # Simulate time-dependent features
-        months_since_start = i
-        
-        # Target variable: Home price with trend and noise
-        trend_factor = (1 + growth_rate/12) ** months_since_start
-        noise = np.random.normal(0, volatility * base_price * 0.1)
-        seasonal_factor = 1 + 0.03 * np.sin(2 * np.pi * (date.month - 1) / 12)
-        home_price = base_price * trend_factor * seasonal_factor + noise
-        
-        # Feature variables (national economic indicators)
-        unemployment_rate = np.random.uniform(3, 8) + 2 * np.sin(2 * np.pi * months_since_start / 24)
-        interest_rate = np.random.uniform(2, 6) + np.sin(2 * np.pi * months_since_start / 36)
-        gdp_growth = np.random.uniform(-1, 4) + np.sin(2 * np.pi * months_since_start / 48)
-        inflation_rate = np.random.uniform(0, 4) + 0.5 * np.sin(2 * np.pi * months_since_start / 18)
-        population_growth = np.random.uniform(0.5, 2.0)
-        median_income = np.random.uniform(55000, 75000) * (1 + 0.025) ** (months_since_start / 12)
-        housing_starts = np.random.poisson(120) + 80
-        consumer_confidence = np.random.uniform(70, 130)
-        
-        # Add some correlation between features and target
-        unemployment_rate -= home_price / base_price * 0.3  # Lower unemployment in high-price periods
-        consumer_confidence += home_price / base_price * 10  # Higher confidence in high-price periods
-        
-        # Create row
-        row = {
-            'Date': date,
-            'home_price': home_price,
-            'unemployment_rate': unemployment_rate,
-            'interest_rate': interest_rate,
-            'gdp_growth': gdp_growth,
-            'inflation_rate': inflation_rate,
-            'population_growth': population_growth,
-            'median_income': median_income,
-            'housing_starts': housing_starts,
-            'consumer_confidence': consumer_confidence,
-            'retail_sales': np.random.uniform(400, 600),
-            'industrial_production': np.random.uniform(95, 110)
-        }
-        
-        data.append(row)
-    
-    # Create DataFrame
-    df = pd.DataFrame(data)
-    
-    # Sort by date
-    df = df.sort_values(['Date']).reset_index(drop=True)
-    
-    print(f"✓ Created dummy USA data with {len(df)} rows")
-    print(f"✓ Date range: {df['Date'].min()} to {df['Date'].max()}")
-    print(f"✓ Features: {[col for col in df.columns if col not in ['Date', 'home_price']]}")
-    
-    return df
+'''
+run_with_custom_paths(
+    usa_file="D:\\Geographical-Home-Price-Ranker\\AllProcessedFIles\\unified_monthly_data.csv",
+    output_file="D:\\Geographical-Home-Price-Ranker\\AllProcessedFIles\\USA_Baseline_20250101.csv"
+)
+custom_config = {
+    'start_date': '2010-01-01',
+    'end_date': '2024-12-31',
+    'featureList': ['unemployment_rate', 'interest_rate', 'gdp_growth', 'inflation_rate'],
+    'targetCol': 'home_price',
+    'lagList': [1, 3, 6, 12, 24],
+    'rateList': [1, 3, 6, 12],
+    'movingAverages': [3, 6, 12],
+    'targetForward': 12,
+    'featuresToUse': ['unemployment_rate', 'interest_rate'],
+    'AllModelsList': ['LinearRegression', 'Ridge', 'RandomForest', 'XGBoost'],
+    'AllModelParams': {
+        'LinearRegression': {},
+        'Ridge': {'alpha': [0.1, 1.0, 10.0]},
+        'RandomForest': {'n_estimators': [100, 200], 'max_depth': [10, 20]},
+        'XGBoost': {'n_estimators': [100, 200], 'max_depth': [6, 10], 'learning_rate': [0.01, 0.1]}
+    }
+}
+run_with_custom_paths(
+    usa_file="D:\\Geographical-Home-Price-Ranker\\AllProcessedFIles\\unified_monthly_data.csv",
+    output_file="D:\\Geographical-Home-Price-Ranker\\AllProcessedFIles\\USA_Baseline_Custom_20250101.csv",
+    config=custom_config
+)
+minimal_config = {
+    'start_date': '2020-01-01',
+    'end_date': '2024-12-31',
+    'featureList': ['unemployment_rate', 'interest_rate'],
+    'targetCol': 'home_price',
+    'AllModelsList': ['LinearRegression', 'RandomForest']
+}
 
-def run_dummy_usa_example():
-    '''
-    Run the complete USA baseline pipeline with dummy data.
-    '''
-    global USA_RESULTS
-    
-    print("="*70)
-    print("RUNNING DUMMY EXAMPLE - USA BASELINE")
-    print("="*70)
-    
-    # Create dummy data
-    df = create_dummy_usa_data()
-    
-    # Save dummy data to CSV (optional)
-    dummy_file_path = "dummy_usa_data.csv"
-    df.to_csv(dummy_file_path, index=False)
-    print(f"✓ Dummy data saved to: {dummy_file_path}")
-    
-    # Configure for dummy data
-    class DummyCFG:
-        def __init__(self):
-            self.filePath = dummy_file_path
-            self.outputPath = "dummy_USA_Baseline_results.csv"
-            self.idList = []
-            self.dateCol = "Date"
-            self.start_date = "2019-01-01"
-            self.end_date = "2023-12-31"
-            self.featureList = ['unemployment_rate', 'interest_rate', 'gdp_growth', 
-                              'inflation_rate', 'population_growth', 'median_income',
-                              'housing_starts', 'consumer_confidence', 'retail_sales', 'industrial_production']
-            self.targetCol = "home_price"
-            self.lagList = [1, 3, 6, 12]  # Reduced for dummy data
-            self.rateList = [1, 3, 6, 12]  # Reduced for dummy data
-            self.movingAverages = [3, 6, 12]  # Reduced for dummy data
-            self.targetForward = 12
-            self.featuresToUse = []
-            
-            # Model configurations
-            self.AllModelsList = ['LinearRegression', 'Ridge', 'RandomForest', 'XGBoost']
-            self.AllModelParams = {
-                'LinearRegression': {},
-                'Ridge': {'alpha': [0.1, 1.0, 10.0]},
-                'RandomForest': {'n_estimators': [50, 100], 'max_depth': [5, 10]},
-                'XGBoost': {'n_estimators': [50, 100], 'max_depth': [3, 6], 'learning_rate': [0.1]}
-            }
-    
-    # Initialize configuration
-    cfg = DummyCFG()
-    
-    # Load and check data
-    df_loaded = loadDataAndCheckAllMonths(cfg.filePath, cfg.dateCol, cfg.start_date, cfg.end_date)
-    
-    # Add features
-    df_features = addAllFeatures(df_loaded, cfg.idList, cfg.dateCol, cfg.featureList, 
-                               cfg.targetCol, cfg.lagList, cfg.movingAverages, cfg.rateList)
-    
-    # Add target
-    df_target, new_target_col = addTarget(df_features, cfg.idList, cfg.dateCol, 
-                                        cfg.targetCol, cfg.targetForward)
-    
-    # Fill missing values and create train/test split
-    df_filled, train_df, test_df, x_columns = fillMissingValues(df_target, new_target_col, 
-                                                              cfg.idList, cfg.dateCol)
-    
-    # Remove skewness and kurtosis
-    train_transformed, test_transformed, transformers = removeSkewnessAndKurtosis(
-        train_df, test_df, x_columns)
-    
-    # Standardize data
-    train_scaled, test_scaled, scaler = standardizeData(train_transformed, test_transformed, x_columns)
-    
-    # Remove high VIF features
-    train_clean, test_clean, final_features = checkAndRemoveHighVIF(train_scaled, test_scaled, x_columns)
-    
-    # Setup CV scheme
-    cv_scheme = timeseriesCV()
-    
-    # Train models and create ensemble
-    results = fitAndPredictVotingRegressor(train_clean, test_clean, final_features, 
-                                         cfg.featuresToUse, new_target_col, 
-                                         cfg.AllModelsList, cfg.AllModelParams, cv_scheme, scaler, cfg.dateCol)
-    
-    # Store results globally
-    USA_RESULTS.update(results)
-    USA_RESULTS['original_data'] = df_filled
-    USA_RESULTS['train_data'] = train_df
-    USA_RESULTS['test_data'] = test_df
-    USA_RESULTS['scaler'] = scaler
-    USA_RESULTS['transformers'] = transformers
-    
-    # Plot results
-    plotResults(results, cfg.outputPath)
-    
-    # Save final results
-    final_df = df_filled.copy()
-    final_df['predictions'] = np.nan
-    final_df.loc[train_df.index, 'predictions'] = results['train_predictions']
-    final_df.loc[test_df.index, 'predictions'] = results['test_predictions']
-    
-    final_df.to_csv(cfg.outputPath, index=False)
-    print(f"✓ Final results saved to: {cfg.outputPath}")
-    
-    print(f"\n{'='*60}")
-    print("DUMMY EXAMPLE PROCESSING COMPLETE")
-    print(f"{'='*60}")
-    print("✓ USA baseline model trained successfully")
-    
-    # Show example analysis
-    print(f"\n{'='*50}")
-    print("EXAMPLE TIME WINDOW ANALYSIS")
-    print(f"{'='*50}")
-    print("You can now analyze specific time windows using:")
-    print("  predictTimeWindow('2020-01-01', '2020-12-31')")
-    print("  predictTimeWindow('2021-01-01', '2021-06-30')")
-    print("  predictTimeWindow('2022-01-01', '2022-12-31')")
-    
-    print(f"\n{'='*70}")
-    print("DUMMY EXAMPLE COMPLETE!")
-    print(f"{'='*70}")
-    print("This was a demonstration with synthetic USA data.")
-    print("Replace the dummy data with your actual data to run the real analysis.")
-
-# Uncomment the line below to run the dummy example
-# run_dummy_usa_example()
-"""
+run_with_custom_paths(
+    usa_file="D:\\Geographical-Home-Price-Ranker\\AllProcessedFIles\\unified_monthly_data.csv",
+    output_file="D:\\Geographical-Home-Price-Ranker\\AllProcessedFIles\\USA_Baseline_Minimal_20250101.csv",
+    config=minimal_config
+)
+'''

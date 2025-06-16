@@ -1122,15 +1122,16 @@ def main():
 if __name__ == "__main__":
     main()
 
-# Example usage with specific file paths
-def run_with_custom_paths(msa_file, usa_file, output_file):
+# Example usage with custom paths and model parameters
+def run_with_custom_paths(msa_file, usa_file, output_file, model_params=None):
     """
-    Run the MSA baseline model with custom file paths.
+    Run the MSA baseline model with custom file paths and model parameters.
     
     Parameters:
     - msa_file: Path to MSA raw data CSV
     - usa_file: Path to USA raw data CSV  
     - output_file: Path for output CSV
+    - model_params: Dictionary of model parameters to override defaults
     """
     global REGION_RESULTS
     REGION_RESULTS = {}  # Reset results
@@ -1150,10 +1151,41 @@ def run_with_custom_paths(msa_file, usa_file, output_file):
         cfg.usa_file_path = usa_file
         cfg.output_path = output_file
         
+        # Update model parameters if provided
+        if model_params:
+            if not isinstance(model_params, dict):
+                raise ValueError("❌ model_params must be a dictionary")
+            
+            # Update model list if provided
+            if 'models' in model_params:
+                cfg.AllModelsList = model_params['models']
+            
+            # Update model parameters if provided
+            if 'model_params' in model_params:
+                for model_name, params in model_params['model_params'].items():
+                    if model_name in cfg.AllModelParams:
+                        cfg.AllModelParams[model_name].update(params)
+            
+            # Update feature engineering parameters if provided
+            if 'lag_list' in model_params:
+                cfg.lagList = model_params['lag_list']
+            if 'rate_list' in model_params:
+                cfg.rateList = model_params['rate_list']
+            if 'moving_averages' in model_params:
+                cfg.movingAverages = model_params['moving_averages']
+            if 'target_forward' in model_params:
+                cfg.targetForward = model_params['target_forward']
+        
         print(f"Running MSA Baseline with custom paths:")
         print(f"  MSA data: {msa_file}")
         print(f"  USA data: {usa_file}")
         print(f"  Output: {output_file}")
+        print("\nModel Configuration:")
+        print(f"  Models: {cfg.AllModelsList}")
+        print(f"  Lags: {cfg.lagList}")
+        print(f"  Rates: {cfg.rateList}")
+        print(f"  Moving Averages: {cfg.movingAverages}")
+        print(f"  Target Forward: {cfg.targetForward}")
         
         # Validate paths before running
         validateAndPreparePaths(cfg)
@@ -1267,78 +1299,33 @@ def run_with_custom_paths(msa_file, usa_file, output_file):
         print(f"❌ Pipeline failed: {str(e)}")
         raise e
 
-# Uncomment and modify the line below to run with your specific file paths
-# run_with_custom_paths("path/to/msa_data.csv", "path/to/usa_data.csv", "output_results.csv")
+# Example usage with model parameters
+def run_with_model_params():
+    """
+    Example of running the MSA baseline with custom model parameters.
+    """
+    model_params = {
+        'models': ['Ridge', 'RandomForest', 'XGBoost'],
+        'model_params': {
+            'Ridge': {'alpha': [0.1, 1.0, 10.0]},
+            'RandomForest': {'n_estimators': [200], 'max_depth': [20]},
+            'XGBoost': {'n_estimators': [200], 'max_depth': [10], 'learning_rate': [0.1]}
+        },
+        'lag_list': [1, 3, 6, 12],
+        'rate_list': [1, 3, 6],
+        'moving_averages': [3, 6, 12],
+        'target_forward': 12
+    }
+    
+    run_with_custom_paths(
+        msa_file='sample_msa_data.csv',
+        usa_file='sample_usa_data.csv',
+        output_file='sample_output.csv',
+        model_params=model_params
+    )
 
-"""
-# ==============================================================================
-# EXAMPLE USAGE AND TESTING
-# ==============================================================================
-
-Example of how to use the MSA Baseline script:
-
-1. Basic usage with default settings:
-   ```python
-   # Make sure your data files are in the correct format
-   # MSA data should have columns: Year_Month_Day, rcode, cs_name, HPI, hpa12m
-   # USA data should have columns: Year_Month_Day, ProjectedHPA1YFwd_USABaseline, USA_HPA1Yfwd, USA_HPI1Yfwd
-   
-   main()  # This will use default file paths
-   ```
-
-2. Usage with custom file paths:
-   ```python
-   run_with_custom_paths(
-       msa_file="path/to/your/msa_data.csv",
-       usa_file="path/to/your/usa_data.csv", 
-       output_file="path/to/your/output.csv"
-   )
-   ```
-
-3. The output will be a CSV file with the following columns:
-   - Year_Month_Day: Date in YYYY-MM-01 format
-   - rcode: MSA region code
-   - cs_name: MSA region name
-   - tag: 'train' or 'test' indicator
-   - ProjectedHPA1YFwd_USABaseline: USA baseline projections
-   - ProjectedHPA1YFwd_MSABaseline: MSA baseline projections (model output)
-   - HPI: Actual HPI values
-   - hpa12m: Actual 12-month HPA values  
-   - HPA1Yfwd: 1-year forward HPA (target variable)
-   - HPI1Y_fwd: 1-year forward HPI
-   - USA_HPA1Yfwd: USA 1-year forward HPA
-   - USA_HPI1Yfwd: USA 1-year forward HPI
-
-Expected Input Data Format:
-
-MSA Raw Data (msa_data.csv):
-```
-Year_Month_Day,rcode,cs_name,HPI,hpa12m,[additional_features...]
-2020-01-01,12345,Metro Area 1,250.5,0.045,...
-2020-02-01,12345,Metro Area 1,252.1,0.047,...
-...
-```
-
-USA Raw Data (usa_data.csv):
-```
-Year_Month_Day,ProjectedHPA1YFwd_USABaseline,USA_HPA1Yfwd,USA_HPI1Yfwd
-2020-01-01,0.055,0.052,265.2
-2020-02-01,0.057,0.054,267.1
-...
-```
-
-Key Features:
-- Automatically handles train/test split (last 12 months are test)
-- Creates comprehensive engineered features (lags, moving averages, etc.)
-- Uses ensemble modeling approach with neural network meta-learner
-- Integrates USA-level baseline projections as features
-- Outputs standardized format for downstream analysis
-
-Performance Notes:
-- Processing time depends on number of MSAs and time periods
-- Memory usage scales with dataset size
-- Consider processing in batches for very large datasets
-"""
+# Uncomment to run with custom model parameters
+# run_with_model_params()
 
 def create_sample_data_demo():
     """
@@ -1401,3 +1388,25 @@ def create_sample_data_demo():
 # Uncomment the lines below to create and test with sample data
 # create_sample_data_demo()
 # run_with_custom_paths('sample_msa_data.csv', 'sample_usa_data.csv', 'sample_output.csv')
+
+'''
+model_params = {
+    'models': ['Ridge', 'RandomForest', 'XGBoost'],
+    'model_params': {
+        'Ridge': {'alpha': [0.1, 1.0, 10.0]},
+        'RandomForest': {'n_estimators': [200], 'max_depth': [20]},
+        'XGBoost': {'n_estimators': [200], 'max_depth': [10], 'learning_rate': [0.1]}
+    },
+    'lag_list': [1, 3, 6, 12],
+    'rate_list': [1, 3, 6],
+    'moving_averages': [3, 6, 12],
+    'target_forward': 12
+}
+
+run_with_custom_paths(
+    msa_file='your_msa_data.csv',
+    usa_file='your_usa_data.csv',
+    output_file='your_output.csv',
+    model_params=model_params
+)
+'''
