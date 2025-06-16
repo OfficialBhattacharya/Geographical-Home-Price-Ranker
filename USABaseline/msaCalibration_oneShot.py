@@ -876,3 +876,35 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+'''
+# Define model parameters
+model_params = {
+    'Ridge': {'alpha': [0.1, 1.0, 10.0]},
+    'RandomForest': {'n_estimators': [200], 'max_depth': [20]},
+    'XGBoost': {'n_estimators': [200], 'max_depth': [10], 'learning_rate': [0.1]}
+}
+
+# Define the models list
+models_list = ['Ridge', 'RandomForest', 'XGBoost']
+
+# Run the script with custom paths and parameters
+run_with_custom_paths(
+    msa_baseline_path='your_msa_data.csv',  # Path to your MSA baseline data
+    msa_new_data_path='your_usa_data.csv',  # Path to your USA data
+    output_path='your_output.csv',          # Path for output file
+    date_col="Year_Month_Day",              # Date column name
+    rcode_col="rcode",                      # Region code column name
+    cs_name_col="cs_name",                  # City name column
+    hpi_col="HPI",                          # HPI column name
+    hpa12m_col="hpa12m",                    # HPA 12-month column name
+    start_date="1990-01-01",                # Start date
+    end_date="2025-01-01",                  # End date
+    additional_features=None,                # Additional features to include
+    all_models_list=models_list,            # List of models to use
+    all_model_params=model_params,          # Model parameters
+    grid_specs=None,                        # Optional grid specifications
+    title_specs=None                        # Optional title specifications
+)
+'''
