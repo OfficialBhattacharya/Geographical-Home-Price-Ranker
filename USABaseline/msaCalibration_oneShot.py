@@ -456,10 +456,10 @@ def createForwardLookingVariables(df, cfg):
     df = df.sort_values([cfg.rcode_col, cfg.date_col])
     
     # Create 12-month forward HPA12M target
-    df['HPA1Yfwd'] = df.groupby(cfg.rcode_col)[cfg.hpa12m_col + '_new'].shift(-12)
+    df['HPA1Yfwd'] = df.groupby(cfg.rcode_col)[cfg.hpa12m_col].shift(-12)
     
     # Create 12-month forward HPI target
-    df['HPI1Y_fwd'] = df.groupby(cfg.rcode_col)[cfg.hpi_col + '_new'].shift(-12)
+    df['HPI1Y_fwd'] = df.groupby(cfg.rcode_col)[cfg.hpi_col].shift(-12)
     
     # Remove rows where we don't have future values (last 12 months)
     df = df.dropna(subset=['HPA1Yfwd', 'HPI1Y_fwd'])
