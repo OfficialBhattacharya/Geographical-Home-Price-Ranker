@@ -461,6 +461,9 @@ def loadAndMergeData(cfg):
         print(f"✓ Final dataset contains {len(unique_regions)} unique MSA regions")
         print(f"✓ Final dataset shape: {merged_df.shape}")
         
+        # After merging, remove duplicate columns by keeping only the first occurrence
+        merged_df = merged_df.loc[:, ~merged_df.columns.duplicated()]
+        
         return merged_df, unique_regions
         
     except Exception as e:
@@ -527,6 +530,9 @@ def createForwardLookingVariables(df, cfg):
     print(f"✓ Forward-looking variables created")
     print(f"✓ Dataset shape after creating targets: {df.shape}")
     
+    # After feature engineering, remove duplicate columns by keeping only the first occurrence
+    df = df.loc[:, ~df.columns.duplicated()]
+    
     return df
 
 def createTrainTestTags(df, cfg):
@@ -580,6 +586,9 @@ def addAllFeatures(df, cfg):
                 lambda x: x.rolling(window=window, min_periods=1).mean()
             )
 
+    # After feature engineering, remove duplicate columns by keeping only the first occurrence
+    df_enhanced = df_enhanced.loc[:, ~df_enhanced.columns.duplicated()]
+
     return df_enhanced
 
 def processRegionMSA(region, df_region, cfg, target_col='HPA1Yfwd'):
@@ -632,9 +641,10 @@ def processRegionMSA(region, df_region, cfg, target_col='HPA1Yfwd'):
         
         # Fill missing values in features
         for col in x_columns:
-            if train_df[col].isnull().any():
-                train_df[col] = train_df[col].fillna(train_df[col].median())
-                test_df[col] = test_df[col].fillna(train_df[col].median())
+            if isinstance(train_df[col], pd.DataFrame):
+                train_df[col] = train_df[col].iloc[:, 0]
+            if col in test_df.columns and isinstance(test_df[col], pd.DataFrame):
+                test_df[col] = test_df[col].iloc[:, 0]
         
         # Prepare X and y
         X_train = train_df[x_columns]
