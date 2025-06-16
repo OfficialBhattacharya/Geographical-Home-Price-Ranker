@@ -391,10 +391,14 @@ def loadAndMergeData(cfg):
         # Select required columns from MSA baseline
         required_baseline_cols = cfg.id_columns + [cfg.date_col] + cfg.msa_baseline_columns + [
             cfg.target_column,
+            cfg.msa_hpi_col,                # MSA HPI column
+            cfg.msa_hpa12m_col,             # MSA HPA12M column
             cfg.usa_hpi_col,
             cfg.usa_hpa12m_col,
             cfg.usa_hpi12mF_col,
-            cfg.usa_hpa12mF_col
+            cfg.usa_hpa12mF_col,
+            cfg.usa_projection_col,         # USA projection column
+            cfg.msa_projection_col          # MSA projection column
         ]
         
         # Verify required columns exist in MSA baseline
@@ -482,18 +486,46 @@ def createForwardLookingVariables(df, cfg):
     # Sort by region and date
     df = df.sort_values([cfg.rcode_col, cfg.date_col])
     
-    # Create 12-month forward HPA12M target
-    df['HPA1Yfwd'] = df.groupby(cfg.rcode_col)[cfg.hpa12m_col].shift(-12)
+    # Check what columns we have and use them appropriately
+    available_columns = list(df.columns)
+    print(f"Available columns after merge: {available_columns}")
     
-    # Create 12-month forward HPI target
-    df['HPI1Y_fwd'] = df.groupby(cfg.rcode_col)[cfg.hpi_col].shift(-12)
+    # Create 12-month forward HPA12M target (use configured target column name)
+    if cfg.target_column not in df.columns:
+        # Try to find the right source column for HPA12M
+        hpa_source_col = None
+        if cfg.msa_hpa12m_col in df.columns:
+            hpa_source_col = cfg.msa_hpa12m_col
+        else:
+            print(f"⚠️  {cfg.msa_hpa12m_col} not found, target column not created")
+        
+        if hpa_source_col:
+            print(f"Creating {cfg.target_column} from {hpa_source_col}")
+            df[cfg.target_column] = df.groupby(cfg.rcode_col)[hpa_source_col].shift(-12)
+    else:
+        print(f"✓ {cfg.target_column} already exists")
     
-    # Remove rows where we don't have future values (last 12 months)
-    df = df.dropna(subset=['HPA1Yfwd', 'HPI1Y_fwd'])
+    # Create 12-month forward HPI target (use configured column name)  
+    if cfg.hpi1y_fwd_col not in df.columns:
+        # Try to find the right source column for HPI
+        hpi_source_col = None
+        if cfg.msa_hpi_col in df.columns:
+            hpi_source_col = cfg.msa_hpi_col
+        else:
+            print(f"⚠️  {cfg.msa_hpi_col} not found, HPI forward column not created")
+        
+        if hpi_source_col:
+            print(f"Creating {cfg.hpi1y_fwd_col} from {hpi_source_col}")
+            df[cfg.hpi1y_fwd_col] = df.groupby(cfg.rcode_col)[hpi_source_col].shift(-12)
+    else:
+        print(f"✓ {cfg.hpi1y_fwd_col} already exists")
+    
+    # Do NOT remove rows with missing future values here - let the downstream functions handle it
+    # This ensures we keep all historical data for feature engineering
     
     logger.info(f"Forward-looking variables created. Shape: {df.shape}")
     print(f"✓ Forward-looking variables created")
-    print(f"✓ Final shape after creating targets: {df.shape}")
+    print(f"✓ Dataset shape after creating targets: {df.shape}")
     
     return df
 
@@ -907,8 +939,10 @@ def fillMissingDataByRegion(df, cfg):
                         else:
                             overall_mean = df_filled[col].mean()
                             region_series_interp.loc[idx] = overall_mean if pd.notna(overall_mean) else 0
-                # Update the main dataframe
-                df_filled.loc[region_df.index, col] = region_series_interp.values
+                # Update the main dataframe iteratively to avoid length mismatch
+                for idx, value in region_series_interp.items():
+                    if idx in df_filled.index:
+                        df_filled.loc[idx, col] = value
                 print(f"  Region {region}, column {col}: Filled {missing_count} missing values using interpolation")
         
         if region_has_missing:
@@ -1162,74 +1196,51 @@ def main():
 if __name__ == "__main__":
     main()
 
-
-'''
-# Example usage:
-run_with_custom_paths(
-    msa_baseline_path='MSA_Baseline_Results.csv',  # Path to MSA baseline data
-    msa_new_data_path='msa_data.csv',             # Path to new MSA data
-    output_path='MSA_Calibration_Results.csv',     # Path for output file
-    date_col="Year_Month_Day",                    # Date column name
-    id_columns=["rcode", "cs_name"],              # ID columns to merge on
-    msa_baseline_columns=[                        # Additional columns from MSA baseline to use
-        "feature1",
-        "feature2"
-    ],
-    target_column="HPA1Yfwd",                     # Target column from MSA baseline
-    msa_hpi_col="HPI",                           # MSA HPI column from baseline
-    msa_hpa12m_col="hpa12m",                     # MSA HPA12M column from baseline
-    usa_hpi_col="USA_HPI",              # USA HPI column from baseline
-    usa_hpa12m_col="USA_HPA12M",        # USA HPA12M column from baseline
-    usa_hpi12mF_col="USA_HPI1Yfwd",
-    usa_hpa12mF_col="USA_HPA1Yfwd",
-    hpi1y_fwd_col="HPI1Y_fwd",
-    usa_projection_col="ProjectedHPA1YFwd_USABaseline",  # USA projection column from baseline
-    msa_projection_col="ProjectedHPA1YFwd_MSABaseline",  # MSA projection column from baseline
-    msa_new_columns=[                            # Additional columns from new MSA data
-        "feature1",
-        "feature2"
-    ],
-    start_date="1990-01-01",                     # Start date
-    end_date="2025-01-01"                         # End date
-)
-'''
-
 # --- TESTING CODE ---
 def test_pipeline_with_dummy_data():
+    """
+    Test the pipeline with small dummy CSV data to verify functionality.
+    """
     import pandas as pd
+    print("Creating dummy test data...")
+    
+    n_rows = 30
     # Create dummy MSA baseline data
     msa_baseline = pd.DataFrame({
-        'rcode': ['A']*14 + ['B']*14,
-        'cs_name': ['Alpha']*14 + ['Beta']*14,
-        'Year_Month_Day': pd.date_range('2020-01-01', periods=14, freq='MS').tolist()*2,
-        'HPI': list(range(100, 114)) + list(range(200, 214)),
-        'hpa12m': [1.0]*14 + [2.0]*14,
-        'USA_HPI1Yfwd': list(range(1000, 1014)) + list(range(2000, 2014)),
-        'USA_HPA1Yfwd': [10.0]*14 + [20.0]*14,
-        'HPA1Yfwd': [1.1]*12 + [None]*2 + [2.2]*12 + [None]*2,
-        'ProjectedHPA1YFwd_USABaseline': [5.0]*14 + [6.0]*14,
-        'ProjectedHPA1YFwd_MSABaseline': [7.0]*14 + [8.0]*14
+        'rcode': ['A']*n_rows + ['B']*n_rows,
+        'cs_name': ['Alpha']*n_rows + ['Beta']*n_rows,
+        'Year_Month_Day': pd.date_range('2020-01-01', periods=n_rows, freq='MS').tolist()*2,
+        'HPI': list(range(100, 100+n_rows)) + list(range(200, 200+n_rows)),
+        'hpa12m': [1.0]*n_rows + [2.0]*n_rows,
+        'USA_HPI1Yfwd': list(range(1000, 1000+n_rows)) + list(range(2000, 2000+n_rows)),
+        'USA_HPA1Yfwd': [10.0]*n_rows + [20.0]*n_rows,
+        'HPA1Yfwd': [1.1]*(n_rows-2) + [None]*2 + [2.2]*(n_rows-2) + [None]*2,
+        'ProjectedHPA1YFwd_USABaseline': [5.0]*n_rows + [6.0]*n_rows,
+        'ProjectedHPA1YFwd_MSABaseline': [7.0]*n_rows + [8.0]*n_rows
     })
     msa_baseline.to_csv('MSA_Baseline_Results.csv', index=False)
+    print("✓ Created MSA_Baseline_Results.csv")
 
     # Create dummy new MSA data
     msa_new = pd.DataFrame({
-        'rcode': ['A']*14 + ['B']*14,
-        'cs_name': ['Alpha']*14 + ['Beta']*14,
-        'Year_Month_Day': pd.date_range('2020-01-01', periods=14, freq='MS').tolist()*2,
-        'feature1': [0.1]*28,
-        'feature2': [0.2]*28
+        'rcode': ['A']*n_rows + ['B']*n_rows,
+        'cs_name': ['Alpha']*n_rows + ['Beta']*n_rows,
+        'Year_Month_Day': pd.date_range('2020-01-01', periods=n_rows, freq='MS').tolist()*2,
+        'employment_rate': [0.1]*(2*n_rows),
+        'income_growth': [0.2]*(2*n_rows)
     })
     msa_new.to_csv('msa_data.csv', index=False)
+    print("✓ Created msa_data.csv")
 
     # Run the pipeline
-    run_with_custom_paths(
+    print("Running test pipeline...")
+    result = run_with_custom_paths(
         msa_baseline_path='MSA_Baseline_Results.csv',
         msa_new_data_path='msa_data.csv',
         output_path='MSA_Calibration_Results.csv',
         date_col='Year_Month_Day',
         id_columns=['rcode', 'cs_name'],
-        msa_baseline_columns=[],
+        msa_baseline_columns=[],  # No additional columns from baseline
         target_column='HPA1Yfwd',
         msa_hpi_col='HPI',
         msa_hpa12m_col='hpa12m',
@@ -1240,11 +1251,17 @@ def test_pipeline_with_dummy_data():
         hpi1y_fwd_col='HPI1Y_fwd',
         usa_projection_col='ProjectedHPA1YFwd_USABaseline',
         msa_projection_col='ProjectedHPA1YFwd_MSABaseline',
-        msa_new_columns=['feature1', 'feature2'],
+        msa_new_columns=['employment_rate', 'income_growth'],  # Use the actual new column names
         start_date='2020-01-01',
-        end_date='2021-02-01'
+        end_date='2022-06-01'
     )
-    print('Test pipeline run complete. Output saved to MSA_Calibration_Results.csv')
+    
+    if result is not None:
+        print('✓ Test pipeline run complete. Output saved to MSA_Calibration_Results.csv')
+        print(f"✓ Output shape: {result.shape}")
+        print(f"✓ Output columns: {list(result.columns)}")
+    else:
+        print('❌ Test pipeline failed')
 
-# Uncomment to run the test
-test_pipeline_with_dummy_data()
+# Uncomment the line below to run the test
+# test_pipeline_with_dummy_data()
