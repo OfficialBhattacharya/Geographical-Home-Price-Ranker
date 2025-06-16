@@ -58,8 +58,13 @@ class CFG:
         print("\nMSA Baseline Columns:")
         self.msa_baseline_columns = input("Enter MSA baseline columns to use (comma-separated): ").split(",")
         self.target_column = input("Enter target column name from MSA baseline: ")
-        self.usa_hpi_col = input("Enter USA HPI column name from MSA baseline: ")
-        self.usa_hpa12m_col = input("Enter USA HPA12M column name from MSA baseline: ")
+        self.msa_hpi_col = input("Enter MSA HPI column name from MSA baseline: ")
+        self.msa_hpa12m_col = input("Enter MSA HPA12M column name from MSA baseline: ")
+        self.usa_hpi12mF_col = input("Enter USA HPI forward column name from MSA baseline: ")
+        self.usa_hpa12mF_col = input("Enter USA HPA forward column name from MSA baseline: ")
+        self.hpi1y_fwd_col = input("Enter HPI1Y forward column name from MSA baseline: ")
+        self.usa_projection_col = input("Enter USA projection column name from MSA baseline: ")
+        self.msa_projection_col = input("Enter MSA projection column name from MSA baseline: ")
         
         # MSA New Data columns
         print("\nMSA New Data Columns:")
@@ -81,10 +86,15 @@ class CFG:
         # Column names
         self.date_col = "Year_Month_Day"
         self.id_columns = ["rcode", "cs_name"]
-        self.msa_baseline_columns = ["ProjectedHPA1YFwd_USABaseline", "ProjectedHPA1YFwd_MSABaseline"]
+        self.msa_baseline_columns = []  # No default baseline columns
         self.target_column = "HPA1Yfwd"
-        self.usa_hpi_col = "USA_HPI1Yfwd"
-        self.usa_hpa12m_col = "USA_HPA1Yfwd"
+        self.msa_hpi_col = "HPI"
+        self.msa_hpa12m_col = "hpa12m"
+        self.usa_hpi12mF_col = "USA_HPI1Yfwd"
+        self.usa_hpa12mF_col = "USA_HPA1Yfwd"
+        self.hpi1y_fwd_col = "HPI1Y_fwd"
+        self.usa_projection_col = "ProjectedHPA1YFwd_USABaseline"
+        self.msa_projection_col = "ProjectedHPA1YFwd_MSABaseline"
         self.msa_new_columns = []
         
         # Date range
@@ -757,7 +767,7 @@ def generateFinalOutput(merged_df, cfg):
         if len(region_dates) > 12:
             last_12_months = region_dates.iloc[-12:]
             mask = (final_df[cfg.id_columns[0]] == region) & (final_df[cfg.date_col].isin(last_12_months))
-            final_df.loc[mask, ['HPA1Yfwd', 'HPI1Y_fwd', 'USA_HPA1Yfwd', 'USA_HPI1Yfwd']] = np.nan
+            final_df.loc[mask, [cfg.target_column, cfg.hpi1y_fwd_col, cfg.usa_hpi12mF_col, cfg.usa_hpa12mF_col]] = np.nan
     
     # Select and order the required columns
     required_columns = [
@@ -765,14 +775,14 @@ def generateFinalOutput(merged_df, cfg):
         cfg.id_columns[0],  # rcode
         cfg.id_columns[1],  # cs_name
         'tag',
-        'ProjectedHPA1YFwd_USABaseline',
-        'ProjectedHPA1YFwd_MSABaseline',
-        cfg.usa_hpi_col,
-        cfg.usa_hpa12m_col,
-        'HPA1Yfwd',
-        'HPI1Y_fwd',
-        'USA_HPA1Yfwd',
-        'USA_HPI1Yfwd',
+        cfg.usa_projection_col,  # USA projection
+        cfg.msa_projection_col,  # MSA projection
+        cfg.msa_hpi_col,
+        cfg.msa_hpa12m_col,
+        cfg.target_column,
+        cfg.hpi1y_fwd_col,
+        cfg.usa_hpi12mF_col,
+        cfg.usa_hpa12mF_col,
         'ProjectedHPA1YFwd_MSA',
         'Approach3_MSA_HPA1YrFwd'
     ]
@@ -939,10 +949,15 @@ def run_with_custom_paths(
     output_path,
     date_col="Year_Month_Day",
     id_columns=["rcode", "cs_name"],
-    msa_baseline_columns=["ProjectedHPA1YFwd_USABaseline", "ProjectedHPA1YFwd_MSABaseline"],
+    msa_baseline_columns=[],
     target_column="HPA1Yfwd",
-    usa_hpi_col="USA_HPI1Yfwd",
-    usa_hpa12m_col="USA_HPA1Yfwd",
+    msa_hpi_col="HPI",
+    msa_hpa12m_col="hpa12m",
+    usa_hpi12mF_col="USA_HPI1Yfwd",
+    usa_hpa12mF_col="USA_HPA1Yfwd",
+    hpi1y_fwd_col="HPI1Y_fwd",
+    usa_projection_col="ProjectedHPA1YFwd_USABaseline",
+    msa_projection_col="ProjectedHPA1YFwd_MSABaseline",
     msa_new_columns=[],
     start_date="1990-01-01",
     end_date="2025-01-01",
@@ -967,8 +982,13 @@ def run_with_custom_paths(
             self.id_columns = id_columns
             self.msa_baseline_columns = msa_baseline_columns
             self.target_column = target_column
-            self.usa_hpi_col = usa_hpi_col
-            self.usa_hpa12m_col = usa_hpa12m_col
+            self.msa_hpi_col = msa_hpi_col
+            self.msa_hpa12m_col = msa_hpa12m_col
+            self.usa_hpi12mF_col = usa_hpi12mF_col
+            self.usa_hpa12mF_col = usa_hpa12mF_col
+            self.hpi1y_fwd_col = hpi1y_fwd_col
+            self.usa_projection_col = usa_projection_col
+            self.msa_projection_col = msa_projection_col
             self.msa_new_columns = msa_new_columns
             self.start_date = start_date
             self.end_date = end_date
