@@ -371,6 +371,34 @@ def loadAndMergeData(cfg):
         msa_new_df = msa_new_df[(msa_new_df[cfg.date_col] >= start_dt) & 
                                (msa_new_df[cfg.date_col] <= end_dt)].copy()
         
+        # Select only the required baseline columns
+        required_baseline_cols = [
+            cfg.date_col,
+            cfg.rcode_col,
+            cfg.cs_name_col,
+            'ProjectedHPA1YFwd_USABaseline',
+            'ProjectedHPA1YFwd_MSABaseline'
+        ]
+        
+        # Verify required columns exist
+        missing_cols = [col for col in required_baseline_cols if col not in msa_baseline_df.columns]
+        if missing_cols:
+            error_msg = f"❌ Missing required columns in MSA baseline data: {missing_cols}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+        
+        # Check for NaN values in baseline columns
+        baseline_numeric_cols = ['ProjectedHPA1YFwd_USABaseline', 'ProjectedHPA1YFwd_MSABaseline']
+        for col in baseline_numeric_cols:
+            nan_count = msa_baseline_df[col].isnull().sum()
+            if nan_count > 0:
+                error_msg = f"❌ Found {nan_count} NaN values in {col} in MSA baseline data"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+        
+        # Select only the required columns from baseline data
+        msa_baseline_df = msa_baseline_df[required_baseline_cols]
+        
         # Merge data on date and region
         merged_df = pd.merge(
             msa_baseline_df,
@@ -703,6 +731,151 @@ def generateFinalOutput(merged_df, cfg):
     
     return final_df
 
+def fillMissingDataByRegion(df, cfg):
+    """
+    Fill missing data rows using growth/decay rates region-wise.
+    If a region has no data for entire time range, use column averages for each month.
+    
+    Parameters:
+    - df: Input dataframe with potential missing data
+    - cfg: Configuration object
+    
+    Returns:
+    - df_filled: Dataframe with missing data filled
+    """
+    logger.info("Filling missing data by region...")
+    print("Filling missing data using growth/decay rates and monthly averages...")
+    
+    df_filled = df.copy()
+    
+    # Define numeric columns to fill (exclude ID and date columns)
+    exclude_cols = [cfg.date_col, cfg.rcode_col, cfg.cs_name_col]
+    numeric_cols = [col for col in df_filled.columns 
+                   if col not in exclude_cols and df_filled[col].dtype in ['float64', 'int64']]
+    
+    print(f"Processing {len(numeric_cols)} numeric columns for missing data...")
+    
+    # Sort data by region and date
+    df_filled = df_filled.sort_values([cfg.rcode_col, cfg.date_col])
+    
+    # Get all unique regions
+    unique_regions = df_filled[cfg.rcode_col].unique()
+    unique_regions = [r for r in unique_regions if pd.notna(r)]
+    
+    # Calculate monthly averages across all regions for fallback
+    print("Calculating monthly averages for fallback imputation...")
+    df_filled['month'] = pd.to_datetime(df_filled[cfg.date_col]).dt.month
+    monthly_averages = {}
+    
+    for col in numeric_cols:
+        monthly_avg = df_filled.groupby('month')[col].mean()
+        monthly_averages[col] = monthly_avg
+    
+    regions_processed = 0
+    regions_with_missing = 0
+    
+    # Process each region
+    for region in unique_regions:
+        region_mask = df_filled[cfg.rcode_col] == region
+        region_df = df_filled[region_mask].copy()
+        
+        region_has_missing = False
+        
+        # Check each numeric column for missing data
+        for col in numeric_cols:
+            missing_count = region_df[col].isnull().sum()
+            
+            if missing_count > 0:
+                region_has_missing = True
+                
+                # Check if entire column is missing for this region
+                if missing_count == len(region_df):
+                    # Fill with monthly averages
+                    print(f"  Region {region}, column {col}: Filling {missing_count} missing values with monthly averages")
+                    
+                    for idx, row in region_df.iterrows():
+                        month = row['month']
+                        if month in monthly_averages[col] and pd.notna(monthly_averages[col][month]):
+                            df_filled.loc[idx, col] = monthly_averages[col][month]
+                        else:
+                            # If monthly average is also NaN, use overall column mean
+                            overall_mean = df_filled[col].mean()
+                            if pd.notna(overall_mean):
+                                df_filled.loc[idx, col] = overall_mean
+                            else:
+                                df_filled.loc[idx, col] = 0  # Last resort
+                
+                else:
+                    # Fill using interpolation and growth rates
+                    region_series = region_df[col].copy()
+                    
+                    # First, try linear interpolation for gaps within the series
+                    region_series_interp = region_series.interpolate(method='linear')
+                    
+                    # For remaining NaNs at the beginning or end, use forward/backward fill
+                    if region_series_interp.isnull().any():
+                        # Forward fill for leading NaNs
+                        region_series_interp = region_series_interp.fillna(method='ffill')
+                        # Backward fill for trailing NaNs
+                        region_series_interp = region_series_interp.fillna(method='bfill')
+                    
+                    # If still NaNs (shouldn't happen but safety check), use monthly averages
+                    if region_series_interp.isnull().any():
+                        for idx in region_series_interp[region_series_interp.isnull()].index:
+                            month = df_filled.loc[idx, 'month']
+                            if month in monthly_averages[col] and pd.notna(monthly_averages[col][month]):
+                                region_series_interp.loc[idx] = monthly_averages[col][month]
+                            else:
+                                overall_mean = df_filled[col].mean()
+                                region_series_interp.loc[idx] = overall_mean if pd.notna(overall_mean) else 0
+                    
+                    # Update the main dataframe
+                    df_filled.loc[region_mask, col] = region_series_interp.values
+                    
+                    print(f"  Region {region}, column {col}: Filled {missing_count} missing values using interpolation")
+        
+        if region_has_missing:
+            regions_with_missing += 1
+        
+        regions_processed += 1
+        
+        if regions_processed % 10 == 0:
+            print(f"  Processed {regions_processed}/{len(unique_regions)} regions...")
+    
+    # Remove the temporary month column
+    df_filled = df_filled.drop('month', axis=1)
+    
+    # Final check for any remaining missing values
+    remaining_missing = df_filled[numeric_cols].isnull().sum().sum()
+    
+    if remaining_missing > 0:
+        print(f"⚠️  Warning: {remaining_missing} missing values still remain. Applying final cleanup...")
+        
+        # Final cleanup: fill any remaining NaNs with column means
+        for col in numeric_cols:
+            col_missing = df_filled[col].isnull().sum()
+            if col_missing > 0:
+                col_mean = df_filled[col].mean()
+                if pd.notna(col_mean):
+                    df_filled[col] = df_filled[col].fillna(col_mean)
+                else:
+                    df_filled[col] = df_filled[col].fillna(0)
+                print(f"  Final cleanup: Filled {col_missing} remaining NaNs in {col}")
+    
+    # Verify no missing values remain in numeric columns
+    final_missing = df_filled[numeric_cols].isnull().sum().sum()
+    
+    logger.info(f"Missing data imputation complete. Regions processed: {regions_processed}")
+    logger.info(f"Regions with missing data: {regions_with_missing}")
+    logger.info(f"Final missing values: {final_missing}")
+    
+    print(f"✓ Missing data imputation complete")
+    print(f"✓ Processed {regions_processed} regions")
+    print(f"✓ {regions_with_missing} regions had missing data")
+    print(f"✓ Final missing values in numeric columns: {final_missing}")
+    
+    return df_filled
+
 def run_with_custom_paths(
     msa_baseline_path,
     msa_new_data_path,
@@ -766,6 +939,10 @@ def run_with_custom_paths(
 
     # Run pipeline
     merged_df, unique_regions = loadAndMergeData(cfg)
+    
+    # Fill missing data by region
+    merged_df = fillMissingDataByRegion(merged_df, cfg)
+    
     merged_df = createTrainTestTags(merged_df, cfg)
     merged_df = addAllFeatures(merged_df, cfg)
 
@@ -806,6 +983,9 @@ def main():
         
         # Step 2: Load and merge data
         merged_df, unique_regions = loadAndMergeData(cfg)
+        
+        # Step 2.5: Fill missing data by region
+        merged_df = fillMissingDataByRegion(merged_df, cfg)
         
         # Step 3: Create train/test tags
         merged_df = createTrainTestTags(merged_df, cfg)
