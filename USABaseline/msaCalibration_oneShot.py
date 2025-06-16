@@ -607,114 +607,71 @@ def processRegionMSA(region, df_region, cfg, target_col='HPA1Yfwd'):
     logger.info(f"Processing MSA region: {region}")
     
     try:
-        # Check if region has sufficient data
-        if df_region.shape[0] < 24:  # At least 2 years of data
+        if df_region.shape[0] < 24:
             logger.warning(f"Region {region} has insufficient data ({df_region.shape[0]} rows), skipping...")
             return None
-        
-        # Separate train and test data
         train_df = df_region[df_region['tag'] == 'train'].copy()
         test_df = df_region[df_region['tag'] == 'test'].copy()
-        
-        # Check if we have enough training data
-        if len(train_df) < 12:  # At least 1 year of training data
+        if len(train_df) < 12:
             logger.warning(f"Region {region} has insufficient training data ({len(train_df)} rows), skipping...")
             return None
-        
-        # Get feature columns (exclude ID, date, target, and tag columns)
         exclude_cols = [cfg.date_col, cfg.rcode_col, cfg.cs_name_col, 'tag', target_col, 
                        'HPA1Yfwd', 'HPI1Y_fwd', cfg.hpa12m_col + '_baseline', cfg.hpi_col + '_baseline',
                        cfg.hpa12m_col + '_new', cfg.hpi_col + '_new']
         x_columns = [col for col in train_df.columns if col not in exclude_cols and not train_df[col].isnull().all()]
-        
-        # Check if we have target values in training data
         if target_col not in train_df.columns or train_df[target_col].isnull().all():
             logger.warning(f"Region {region} has no valid target values, skipping...")
             return None
-        
-        # Remove rows with NaN target values from training data
         train_df = train_df.dropna(subset=[target_col])
-        
+        # Drop rows with NA in X variables for both train and test
+        train_df = train_df.dropna(subset=x_columns)
+        test_df = test_df.dropna(subset=x_columns)
         if len(train_df) < 12:
-            logger.warning(f"Region {region} has insufficient training data after removing NaN targets, skipping...")
+            logger.warning(f"Region {region} has insufficient training data after removing NaN targets or features, skipping...")
             return None
-        
-        # Fill missing values in features
-        for col in x_columns:
-            if isinstance(train_df[col], pd.DataFrame):
-                train_df[col] = train_df[col].iloc[:, 0]
-            if col in test_df.columns and isinstance(test_df[col], pd.DataFrame):
-                test_df[col] = test_df[col].iloc[:, 0]
-        
-        # Prepare X and y
         X_train = train_df[x_columns]
         y_train = train_df[target_col]
         X_test = test_df[x_columns]
-        
-        # Check for sufficient feature diversity
         if len(x_columns) < 3:
             logger.warning(f"Region {region} has too few features ({len(x_columns)}), skipping...")
             return None
-        
-        # Standardize features
         scaler = RobustScaler()
         X_train_scaled = scaler.fit_transform(X_train)
         X_test_scaled = scaler.transform(X_test)
-        
-        # Simple model selection
         models = {
             'Ridge': Ridge(alpha=1.0),
             'RandomForest': RandomForestRegressor(n_estimators=100, random_state=42),
             'XGBoost': xgb.XGBRegressor(n_estimators=100, random_state=42, verbosity=0)
         }
-        
-        # Train models and get predictions
         model_predictions = {}
         model_scores = {}
-        
         for name, model in models.items():
             try:
-                # Fit model
                 model.fit(X_train_scaled, y_train)
-                
-                # Get predictions
                 train_pred = model.predict(X_train_scaled)
                 test_pred = model.predict(X_test_scaled)
-                
                 model_predictions[name] = {
                     'train': train_pred,
                     'test': test_pred
                 }
-                
-                # Calculate training score
                 r2 = r2_score(y_train, train_pred)
                 model_scores[name] = r2
-                
                 logger.info(f"{name} - Training R²: {r2:.4f}")
-                
             except Exception as e:
                 logger.warning(f"Error training {name} for region {region}: {str(e)}")
-        
         if not model_predictions:
             logger.warning(f"No models successfully trained for region {region}")
             return None
-        
-        # Create ensemble prediction (simple average)
         if len(model_predictions) > 1:
             ensemble_train = np.mean([pred['train'] for pred in model_predictions.values()], axis=0)
             ensemble_test = np.mean([pred['test'] for pred in model_predictions.values()], axis=0)
         else:
-            # Use the single model prediction
             single_model = list(model_predictions.values())[0]
             ensemble_train = single_model['train']
             ensemble_test = single_model['test']
-        
-        # Calculate performance metrics
         train_r2 = r2_score(y_train, ensemble_train)
         train_mse = mean_squared_error(y_train, ensemble_train)
         train_mae = mean_absolute_error(y_train, ensemble_train)
-        
-        # Compile results
         results = {
             'region': region,
             'data_shape': df_region.shape,
@@ -738,9 +695,7 @@ def processRegionMSA(region, df_region, cfg, target_col='HPA1Yfwd'):
                 'train_mae': train_mae
             }
         }
-        
         return results
-        
     except Exception as e:
         logger.error(f"Error processing region {region}: {str(e)}")
         return None
@@ -830,98 +785,56 @@ def generateFinalOutput(merged_df, cfg):
     return final_df
 
 def fillMissingDataByRegion(df, cfg):
-    """
-    Fill missing data rows using growth/decay rates region-wise.
-    If a region has no data for entire time range, use column averages for each month.
-    
-    Parameters:
-    - df: Input dataframe with potential missing data
-    - cfg: Configuration object
-    
-    Returns:
-    - df_filled: Dataframe with missing data filled
-    """
     logger.info("Filling missing data by region...")
     print("Filling missing data using growth/decay rates and monthly averages...")
-    
     df_filled = df.copy()
-    
-    # Define numeric columns to fill (exclude ID and date columns)
     exclude_cols = [cfg.date_col, cfg.rcode_col, cfg.cs_name_col]
-    # Only use user-specified columns for filling
     user_numeric_cols = [col for col in [cfg.msa_hpi_col, cfg.msa_hpa12m_col, cfg.usa_hpi_col, cfg.usa_hpa12m_col, cfg.usa_hpi12mF_col, cfg.usa_hpa12mF_col, cfg.usa_projection_col, cfg.msa_projection_col] + cfg.msa_new_columns if col in df_filled.columns and pd.api.types.is_numeric_dtype(df_filled[col])]
     numeric_cols = [col for col in user_numeric_cols if col not in exclude_cols]
-
     print(f"Processing {len(numeric_cols)} numeric columns for missing data...")
-    
-    # Sort data by region and date
     df_filled = df_filled.sort_values([cfg.rcode_col, cfg.date_col])
-    
-    # Get all unique regions
     unique_regions = df_filled[cfg.rcode_col].unique()
     unique_regions = [r for r in unique_regions if pd.notna(r)]
-    
-    # Calculate monthly averages across all regions for fallback
     print("Calculating monthly averages for fallback imputation...")
     df_filled['month'] = pd.to_datetime(df_filled[cfg.date_col]).dt.month
     monthly_averages = {}
-    
     for col in numeric_cols:
         monthly_avg = df_filled.groupby('month')[col].mean()
         monthly_averages[col] = monthly_avg
-    
     regions_processed = 0
     regions_with_missing = 0
-    
-    # Process each region
     for region in unique_regions:
         region_mask = df_filled[cfg.rcode_col] == region
         region_df = df_filled[region_mask].copy()
-        
         region_has_missing = False
-        
-        # Check each numeric column for missing data
         for col in numeric_cols:
             if col == cfg.target_column:
-                continue  # Don't fill the target column!
+                continue
             col_data = region_df[col]
             if isinstance(col_data, pd.DataFrame):
                 col_data = col_data.iloc[:, 0]
             missing_count = col_data.isnull().sum()
-            
             if missing_count > 0:
                 region_has_missing = True
-            
-            # Check if entire column is missing for this region
             if missing_count == len(region_df):
-                # Fill with monthly averages
-                print(f"  Region {region}, column {col}: Filling {missing_count} missing values with monthly averages")
                 for idx, row in region_df.iterrows():
                     month = row['month']
                     if month in monthly_averages[col] and pd.notna(monthly_averages[col][month]):
                         df_filled.loc[idx, col] = monthly_averages[col][month]
                     else:
-                        # If monthly average is also NaN, use overall column mean
                         overall_mean = df_filled[col].mean(skipna=True)
-                        # Ensure overall_mean is a scalar
                         if isinstance(overall_mean, pd.Series):
                             overall_mean = overall_mean.mean(skipna=True)
                         if pd.notna(overall_mean):
                             df_filled.loc[idx, col] = overall_mean
                         else:
-                            df_filled.loc[idx, col] = 0  # Last resort
+                            df_filled.loc[idx, col] = 0
             else:
-                # Fill using interpolation and growth rates
                 region_series = col_data.copy()
-                # First, try linear interpolation for gaps within the series
                 region_series_interp = region_series.interpolate(method='linear')
-                # For remaining NaNs at the beginning or end, use forward/backward fill
                 if region_series_interp.isnull().any():
-                    # Forward fill for leading NaNs
                     region_series_interp = region_series_interp.fillna(method='ffill')
-                    # Backward fill for trailing NaNs
                     region_series_interp = region_series_interp.fillna(method='bfill')
-                # If still NaNs (shouldn't happen but safety check), use monthly averages
                 if region_series_interp.isnull().any():
                     for idx in region_series_interp[region_series_interp.isnull()].index:
                         month = df_filled.loc[idx, 'month']
@@ -930,30 +843,18 @@ def fillMissingDataByRegion(df, cfg):
                         else:
                             overall_mean = df_filled[col].mean()
                             region_series_interp.loc[idx] = overall_mean if pd.notna(overall_mean) else 0
-                # Update the main dataframe iteratively to avoid length mismatch
                 for idx, value in region_series_interp.items():
                     if idx in df_filled.index:
                         df_filled.loc[idx, col] = value
-                print(f"  Region {region}, column {col}: Filled {missing_count} missing values using interpolation")
-        
         if region_has_missing:
             regions_with_missing += 1
-        
         regions_processed += 1
-        
-        if regions_processed % 10 == 0:
-            print(f"  Processed {regions_processed}/{len(unique_regions)} regions...")
-    
-    # Remove the temporary month column
+        if regions_processed % 10 == 0 or regions_processed == len(unique_regions):
+            logger.info(f"Completed missing data interpolation for {regions_processed}/{len(unique_regions)} MSAs")
     df_filled = df_filled.drop('month', axis=1)
-    
-    # Final check for any remaining missing values
     remaining_missing = df_filled[numeric_cols].isnull().sum().sum()
-    
     if remaining_missing > 0:
         print(f"⚠️  Warning: {remaining_missing} missing values still remain. Applying final cleanup...")
-        
-        # Final cleanup: fill any remaining NaNs with column means
         for col in numeric_cols:
             col_missing = df_filled[col].isnull().sum()
             if col_missing > 0:
@@ -963,19 +864,14 @@ def fillMissingDataByRegion(df, cfg):
                 else:
                     df_filled[col] = df_filled[col].fillna(0)
                 print(f"  Final cleanup: Filled {col_missing} remaining NaNs in {col}")
-    
-    # Verify no missing values remain in numeric columns
     final_missing = df_filled[numeric_cols].isnull().sum().sum()
-    
     logger.info(f"Missing data imputation complete. Regions processed: {regions_processed}")
     logger.info(f"Regions with missing data: {regions_with_missing}")
     logger.info(f"Final missing values: {final_missing}")
-    
     print(f"✓ Missing data imputation complete")
     print(f"✓ Processed {regions_processed} regions")
     print(f"✓ {regions_with_missing} regions had missing data")
     print(f"✓ Final missing values in numeric columns: {final_missing}")
-    
     return df_filled
 
 def run_with_custom_paths(
@@ -1071,7 +967,7 @@ def run_with_custom_paths(
     merged_df = createForwardLookingVariables(merged_df, cfg)
     
     merged_df = createTrainTestTags(merged_df, cfg)
-    merged_df = addAllFeatures(merged_df, cfg)
+    # merged_df = addAllFeatures(merged_df, cfg)  # Removed as per user request
 
     processed_count = 0
     skipped_count = 0
@@ -1121,7 +1017,7 @@ def main():
         merged_df = createTrainTestTags(merged_df, cfg)
         
         # Step 5: Add engineered features
-        merged_df = addAllFeatures(merged_df, cfg)
+        # merged_df = addAllFeatures(merged_df, cfg)  # Removed as per user request
         
         print(f"\nProcessing {len(unique_regions)} MSA regions...")
         
