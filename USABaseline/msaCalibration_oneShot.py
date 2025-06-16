@@ -1144,32 +1144,30 @@ if __name__ == "__main__":
 
 
 '''
-# Define model parameters
-model_params = {
-    'Ridge': {'alpha': [0.1, 1.0, 10.0]},
-    'RandomForest': {'n_estimators': [200], 'max_depth': [20]},
-    'XGBoost': {'n_estimators': [200], 'max_depth': [10], 'learning_rate': [0.1]}
-}
-
-# Define the models list
-models_list = ['Ridge', 'RandomForest', 'XGBoost']
-
-# Run the script with custom paths and parameters
+# Example usage:
 run_with_custom_paths(
-    msa_baseline_path='your_msa_data.csv',  # Path to your MSA baseline data
-    msa_new_data_path='your_usa_data.csv',  # Path to your USA data
-    output_path='your_output.csv',          # Path for output file
-    date_col="Year_Month_Day",              # Date column name
-    rcode_col="rcode",                      # Region code column name
-    cs_name_col="cs_name",                  # City name column
-    hpi_col="HPI",                          # HPI column name
-    hpa12m_col="hpa12m",                    # HPA 12-month column name
-    start_date="1990-01-01",                # Start date
-    end_date="2025-01-01",                  # End date
-    additional_features=None,                # Additional features to include
-    all_models_list=models_list,            # List of models to use
-    all_model_params=model_params,          # Model parameters
-    grid_specs=None,                        # Optional grid specifications
-    title_specs=None                        # Optional title specifications
+    msa_baseline_path='MSA_Baseline_Results.csv',  # Path to MSA baseline data
+    msa_new_data_path='msa_data.csv',             # Path to new MSA data
+    output_path='MSA_Calibration_Results.csv',     # Path for output file
+    date_col="Year_Month_Day",                    # Date column name
+    id_columns=["rcode", "cs_name"],              # ID columns to merge on
+    msa_baseline_columns=[                        # Additional columns from MSA baseline to use
+        "feature1",
+        "feature2"
+    ],
+    target_column="HPA1Yfwd",                     # Target column from MSA baseline
+    msa_hpi_col="HPI",                           # MSA HPI column from baseline
+    msa_hpa12m_col="hpa12m",                     # MSA HPA12M column from baseline
+    usa_hpi12mF_col="USA_HPI1Yfwd",              # USA HPI forward column from baseline
+    usa_hpa12mF_col="USA_HPA1Yfwd",              # USA HPA forward column from baseline
+    hpi1y_fwd_col="HPI1Y_fwd",                   # HPI1Y forward column from baseline
+    usa_projection_col="ProjectedHPA1YFwd_USABaseline",  # USA projection column from baseline
+    msa_projection_col="ProjectedHPA1YFwd_MSABaseline",  # MSA projection column from baseline
+    msa_new_columns=[                            # Additional columns from new MSA data
+        "feature1",
+        "feature2"
+    ],
+    start_date="1990-01-01",                     # Start date
+    end_date="2025-01-01"                         # End date
 )
 '''
