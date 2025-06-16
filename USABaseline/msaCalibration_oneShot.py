@@ -421,17 +421,23 @@ def loadAndMergeData(cfg):
         msa_new_df = msa_new_df[required_new_cols]
         
         # Drop regions with missing projections in MSA baseline
-        regions_with_missing = msa_baseline_df[msa_baseline_df[cfg.target_column].isnull()][cfg.id_columns[0]].unique()
-        if len(regions_with_missing) > 0:
-            logger.warning(f"Found {len(regions_with_missing)} regions with missing projections")
-            print(f"\n⚠️  Found {len(regions_with_missing)} regions with missing projections:")
-            for region in regions_with_missing:
+        regions_with_excessive_missing = []
+        for region in msa_baseline_df[cfg.id_columns[0]].unique():
+            region_data = msa_baseline_df[msa_baseline_df[cfg.id_columns[0]] == region]
+            missing_count = region_data[cfg.target_column].isnull().sum()
+            if missing_count > 12:  # Only remove if more than 12 months are missing
+                regions_with_excessive_missing.append(region)
+        
+        if regions_with_excessive_missing:
+            logger.warning(f"Found {len(regions_with_excessive_missing)} regions with excessive missing data (>12 months)")
+            print(f"\n⚠️  Found {len(regions_with_excessive_missing)} regions with excessive missing data (>12 months):")
+            for region in regions_with_excessive_missing:
                 print(f"  - Region: {region}")
             
-            # Remove regions with missing projections
-            msa_baseline_df = msa_baseline_df[~msa_baseline_df[cfg.id_columns[0]].isin(regions_with_missing)]
-            logger.info(f"Removed {len(regions_with_missing)} regions with missing projections")
-            print(f"✓ Removed {len(regions_with_missing)} regions with missing projections")
+            # Remove regions with excessive missing data
+            msa_baseline_df = msa_baseline_df[~msa_baseline_df[cfg.id_columns[0]].isin(regions_with_excessive_missing)]
+            logger.info(f"Removed {len(regions_with_excessive_missing)} regions with excessive missing data")
+            print(f"✓ Removed {len(regions_with_excessive_missing)} regions with excessive missing data")
         
         # Merge data on ID columns and date
         merge_cols = cfg.id_columns + [cfg.date_col]
