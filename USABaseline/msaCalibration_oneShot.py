@@ -953,6 +953,8 @@ def run_with_custom_paths(
     target_column="HPA1Yfwd",
     msa_hpi_col="HPI",
     msa_hpa12m_col="hpa12m",
+    usa_hpi_col="USA_HPI",              # USA HPI column from baseline
+    usa_hpa12m_col="USA_HPA12M",        # USA HPA12M column from baseline
     usa_hpi12mF_col="USA_HPI1Yfwd",
     usa_hpa12mF_col="USA_HPA1Yfwd",
     hpi1y_fwd_col="HPI1Y_fwd",
@@ -986,8 +988,8 @@ def run_with_custom_paths(
             self.target_column = target_column
             self.msa_hpi_col = msa_hpi_col
             self.msa_hpa12m_col = msa_hpa12m_col
-            self.usa_hpi_col = "USA_HPI"  # Default USA HPI column
-            self.usa_hpa12m_col = "USA_HPA12M"  # Default USA HPA12M column
+            self.usa_hpi_col = usa_hpi_col
+            self.usa_hpa12m_col = usa_hpa12m_col
             self.usa_hpi12mF_col = usa_hpi12mF_col
             self.usa_hpa12mF_col = usa_hpa12mF_col
             self.hpi1y_fwd_col = hpi1y_fwd_col
@@ -1166,9 +1168,11 @@ run_with_custom_paths(
     target_column="HPA1Yfwd",                     # Target column from MSA baseline
     msa_hpi_col="HPI",                           # MSA HPI column from baseline
     msa_hpa12m_col="hpa12m",                     # MSA HPA12M column from baseline
-    usa_hpi12mF_col="USA_HPI1Yfwd",              # USA HPI forward column from baseline
-    usa_hpa12mF_col="USA_HPA1Yfwd",              # USA HPA forward column from baseline
-    hpi1y_fwd_col="HPI1Y_fwd",                   # HPI1Y forward column from baseline
+    usa_hpi_col="USA_HPI",              # USA HPI column from baseline
+    usa_hpa12m_col="USA_HPA12M",        # USA HPA12M column from baseline
+    usa_hpi12mF_col="USA_HPI1Yfwd",
+    usa_hpa12mF_col="USA_HPA1Yfwd",
+    hpi1y_fwd_col="HPI1Y_fwd",
     usa_projection_col="ProjectedHPA1YFwd_USABaseline",  # USA projection column from baseline
     msa_projection_col="ProjectedHPA1YFwd_MSABaseline",  # MSA projection column from baseline
     msa_new_columns=[                            # Additional columns from new MSA data
