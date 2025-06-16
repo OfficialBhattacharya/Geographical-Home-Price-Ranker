@@ -559,50 +559,27 @@ def createTrainTestTags(df, cfg):
 
 def addAllFeatures(df, cfg):
     """
-    Add all lagged features, moving averages, and other engineered features.
-    
-    Parameters:
-    - df: Input dataframe
-    - cfg: Configuration object
-    
-    Returns:
-    - df: Enhanced dataframe with new features
+    Add lagged features, moving averages, and other engineered features ONLY for new MSA columns.
     """
     logger.info("Adding engineered features...")
-    
+
     df_enhanced = df.copy()
-    
-    # Define features to engineer
-    base_features = [
-        cfg.hpa12m_col + '_baseline',
-        cfg.hpi_col + '_baseline',
-        'ProjectedHPA1YFwd_USABaseline',
-        'ProjectedHPA1YFwd_MSABaseline',
-        cfg.hpa12m_col + '_new',
-        cfg.hpi_col + '_new'
-    ]
-    
-    # Add any additional features from config
-    base_features.extend([f + '_new' for f in cfg.additional_features])
-    
-    # Remove duplicates and ensure columns exist
-    base_features = list(set([f for f in base_features if f in df_enhanced.columns]))
-    
-    # Sort by region and date for proper lag calculation
-    df_enhanced = df_enhanced.sort_values([cfg.rcode_col, cfg.date_col])
-    
+
+    # Only use new MSA columns for feature engineering
+    base_features = [col for col in cfg.msa_new_columns if col in df_enhanced.columns and pd.api.types.is_numeric_dtype(df_enhanced[col])]
+
     # Add lagged features
     for feature in base_features:
         for lag in [1, 3, 6, 12]:
             df_enhanced[f'{feature}_lag_{lag}'] = df_enhanced.groupby(cfg.rcode_col)[feature].shift(lag)
-    
+
     # Add moving averages
     for feature in base_features:
         for window in [3, 6, 12]:
             df_enhanced[f'{feature}_ma_{window}'] = df_enhanced.groupby(cfg.rcode_col)[feature].transform(
                 lambda x: x.rolling(window=window, min_periods=1).mean()
             )
-    
+
     return df_enhanced
 
 def processRegionMSA(region, df_region, cfg, target_col='HPA1Yfwd'):
