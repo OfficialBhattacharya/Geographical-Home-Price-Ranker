@@ -436,6 +436,40 @@ def loadAndMergeData(cfg):
         logger.error(f"Error in loadAndMergeData: {str(e)}")
         raise e
 
+def createForwardLookingVariables(df, cfg):
+    """
+    Create forward-looking target variables for each region.
+    
+    Parameters:
+    - df: Input dataframe
+    - cfg: Configuration object
+    
+    Returns:
+    - df: Dataframe with forward-looking variables added
+    """
+    logger.info("Creating forward-looking target variables...")
+    print("Creating forward-looking target variables...")
+    
+    df = df.copy()
+    
+    # Sort by region and date
+    df = df.sort_values([cfg.rcode_col, cfg.date_col])
+    
+    # Create 12-month forward HPA12M target
+    df['HPA1Yfwd'] = df.groupby(cfg.rcode_col)[cfg.hpa12m_col + '_new'].shift(-12)
+    
+    # Create 12-month forward HPI target
+    df['HPI1Y_fwd'] = df.groupby(cfg.rcode_col)[cfg.hpi_col + '_new'].shift(-12)
+    
+    # Remove rows where we don't have future values (last 12 months)
+    df = df.dropna(subset=['HPA1Yfwd', 'HPI1Y_fwd'])
+    
+    logger.info(f"Forward-looking variables created. Shape: {df.shape}")
+    print(f"✓ Forward-looking variables created")
+    print(f"✓ Final shape after creating targets: {df.shape}")
+    
+    return df
+
 def createTrainTestTags(df, cfg):
     """
     Create train/test tags for the data.
@@ -959,6 +993,9 @@ def run_with_custom_paths(
     # Fill missing data by region
     merged_df = fillMissingDataByRegion(merged_df, cfg)
     
+    # Create forward-looking target variables
+    merged_df = createForwardLookingVariables(merged_df, cfg)
+    
     merged_df = createTrainTestTags(merged_df, cfg)
     merged_df = addAllFeatures(merged_df, cfg)
 
@@ -1003,15 +1040,18 @@ def main():
         # Step 2.5: Fill missing data by region
         merged_df = fillMissingDataByRegion(merged_df, cfg)
         
-        # Step 3: Create train/test tags
+        # Step 3: Create forward-looking target variables
+        merged_df = createForwardLookingVariables(merged_df, cfg)
+        
+        # Step 4: Create train/test tags
         merged_df = createTrainTestTags(merged_df, cfg)
         
-        # Step 4: Add engineered features
+        # Step 5: Add engineered features
         merged_df = addAllFeatures(merged_df, cfg)
         
         print(f"\nProcessing {len(unique_regions)} MSA regions...")
         
-        # Step 5: Process each MSA region
+        # Step 6: Process each MSA region
         processed_count = 0
         skipped_count = 0
         
@@ -1040,7 +1080,7 @@ def main():
         print(f"📊 Total regions: {len(unique_regions)}")
         
         if processed_count > 0:
-            # Step 6: Generate final output
+            # Step 7: Generate final output
             final_output = generateFinalOutput(merged_df, cfg)
             
             # Save results
