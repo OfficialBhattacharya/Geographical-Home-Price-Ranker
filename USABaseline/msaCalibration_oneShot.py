@@ -980,10 +980,14 @@ def run_with_custom_paths(
             self.output_path = output_path
             self.date_col = date_col
             self.id_columns = id_columns
+            self.rcode_col = id_columns[0]  # First ID column is rcode
+            self.cs_name_col = id_columns[1]  # Second ID column is cs_name
             self.msa_baseline_columns = msa_baseline_columns
             self.target_column = target_column
             self.msa_hpi_col = msa_hpi_col
             self.msa_hpa12m_col = msa_hpa12m_col
+            self.usa_hpi_col = "USA_HPI"  # Default USA HPI column
+            self.usa_hpa12m_col = "USA_HPA12M"  # Default USA HPA12M column
             self.usa_hpi12mF_col = usa_hpi12mF_col
             self.usa_hpa12mF_col = usa_hpa12mF_col
             self.hpi1y_fwd_col = hpi1y_fwd_col
@@ -1014,6 +1018,10 @@ def run_with_custom_paths(
                 'fontweight': 'bold',
                 'color': '#992600',
             }
+            # Additional attributes needed for data processing
+            self.hpi_col = msa_hpi_col  # Alias for msa_hpi_col
+            self.hpa12m_col = msa_hpa12m_col  # Alias for msa_hpa12m_col
+            self.additional_features = []  # Empty list for additional features
     cfg = CustomCFG()
 
     # Run pipeline
