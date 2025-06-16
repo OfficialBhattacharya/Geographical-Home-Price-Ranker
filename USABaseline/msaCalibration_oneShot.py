@@ -829,8 +829,8 @@ def fillMissingDataByRegion(df, cfg):
     
     # Define numeric columns to fill (exclude ID and date columns)
     exclude_cols = [cfg.date_col, cfg.rcode_col, cfg.cs_name_col]
-    numeric_cols = [col for col in df_filled.columns 
-                   if col not in exclude_cols and df_filled[col].dtype in ['float64', 'int64']]
+    numeric_cols = [col for col in df_filled.select_dtypes(include=['float64', 'int64']).columns 
+                   if col not in exclude_cols]
     
     print(f"Processing {len(numeric_cols)} numeric columns for missing data...")
     
