@@ -861,9 +861,10 @@ def fillMissingDataByRegion(df, cfg):
     
     # Define numeric columns to fill (exclude ID and date columns)
     exclude_cols = [cfg.date_col, cfg.rcode_col, cfg.cs_name_col]
-    numeric_cols = [col for col in df_filled.select_dtypes(include=['float64', 'int64']).columns 
-                   if col not in exclude_cols]
-    
+    # Only use user-specified columns for filling
+    user_numeric_cols = [col for col in [cfg.msa_hpi_col, cfg.msa_hpa12m_col, cfg.usa_hpi_col, cfg.usa_hpa12m_col, cfg.usa_hpi12mF_col, cfg.usa_hpa12mF_col, cfg.usa_projection_col, cfg.msa_projection_col] + cfg.msa_new_columns if col in df_filled.columns and pd.api.types.is_numeric_dtype(df_filled[col])]
+    numeric_cols = [col for col in user_numeric_cols if col not in exclude_cols]
+
     print(f"Processing {len(numeric_cols)} numeric columns for missing data...")
     
     # Sort data by region and date
@@ -914,7 +915,10 @@ def fillMissingDataByRegion(df, cfg):
                         df_filled.loc[idx, col] = monthly_averages[col][month]
                     else:
                         # If monthly average is also NaN, use overall column mean
-                        overall_mean = df_filled[col].mean()
+                        overall_mean = df_filled[col].mean(skipna=True)
+                        # Ensure overall_mean is a scalar
+                        if isinstance(overall_mean, pd.Series):
+                            overall_mean = overall_mean.mean(skipna=True)
                         if pd.notna(overall_mean):
                             df_filled.loc[idx, col] = overall_mean
                         else:
