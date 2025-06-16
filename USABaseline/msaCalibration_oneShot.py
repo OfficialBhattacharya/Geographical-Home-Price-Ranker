@@ -45,25 +45,29 @@ class CFG:
         """Get all configurations from user input"""
         print("=== MSA CALIBRATION CONFIGURATION SETUP ===")
         
-        # Data paths
+        # Data paths and columns
         self.msa_baseline_path = input("Enter MSA baseline data CSV file path: ")
         self.msa_new_data_path = input("Enter new MSA data CSV file path: ")
         self.output_path = input("Enter output CSV file path [MSA_Calibration_Results.csv]: ") or "MSA_Calibration_Results.csv"
         
         # Column configurations
-        self.date_col = "Year_Month_Day"
-        self.rcode_col = "rcode"
-        self.cs_name_col = "cs_name"
-        self.hpi_col = "HPI"
-        self.hpa12m_col = "hpa12m"
+        self.date_col = input("Enter date column name: ")
+        self.id_columns = input("Enter ID columns to merge on (comma-separated): ").split(",")
+        
+        # MSA Baseline columns
+        print("\nMSA Baseline Columns:")
+        self.msa_baseline_columns = input("Enter MSA baseline columns to use (comma-separated): ").split(",")
+        self.target_column = input("Enter target column name from MSA baseline: ")
+        self.usa_hpi_col = input("Enter USA HPI column name from MSA baseline: ")
+        self.usa_hpa12m_col = input("Enter USA HPA12M column name from MSA baseline: ")
+        
+        # MSA New Data columns
+        print("\nMSA New Data Columns:")
+        self.msa_new_columns = input("Enter MSA new data columns to use (comma-separated): ").split(",")
         
         # Date configurations
         self.start_date = input("Enter start date (YYYY-MM-DD) [1990-01-01]: ") or "1990-01-01"
         self.end_date = input("Enter end date (YYYY-MM-DD) [2025-01-01]: ") or "2025-01-01"
-        
-        # Feature configurations
-        feature_input = input("Enter additional feature columns (comma-separated) []: ")
-        self.additional_features = [f.strip() for f in feature_input.split(",")] if feature_input else []
         
         # Model configurations
         self._setup_model_configurations()
@@ -76,17 +80,16 @@ class CFG:
         
         # Column names
         self.date_col = "Year_Month_Day"
-        self.rcode_col = "rcode"
-        self.cs_name_col = "cs_name"
-        self.hpi_col = "HPI"
-        self.hpa12m_col = "hpa12m"
+        self.id_columns = ["rcode", "cs_name"]
+        self.msa_baseline_columns = ["ProjectedHPA1YFwd_USABaseline", "ProjectedHPA1YFwd_MSABaseline"]
+        self.target_column = "HPA1Yfwd"
+        self.usa_hpi_col = "USA_HPI1Yfwd"
+        self.usa_hpa12m_col = "USA_HPA1Yfwd"
+        self.msa_new_columns = []
         
         # Date range
         self.start_date = "1990-01-01"
         self.end_date = "2025-01-01"
-        
-        # Additional features
-        self.additional_features = []
         
         # Model configurations
         self._setup_model_configurations()
@@ -371,58 +374,60 @@ def loadAndMergeData(cfg):
         msa_new_df = msa_new_df[(msa_new_df[cfg.date_col] >= start_dt) & 
                                (msa_new_df[cfg.date_col] <= end_dt)].copy()
         
-        # Select only the required baseline columns
-        required_baseline_cols = [
-            cfg.date_col,
-            cfg.rcode_col,
-            cfg.cs_name_col,
-            'ProjectedHPA1YFwd_USABaseline',
-            'ProjectedHPA1YFwd_MSABaseline'
+        # Select required columns from MSA baseline
+        required_baseline_cols = cfg.id_columns + [cfg.date_col] + cfg.msa_baseline_columns + [
+            cfg.target_column,
+            cfg.usa_hpi_col,
+            cfg.usa_hpa12m_col
         ]
         
-        # Verify required columns exist
+        # Verify required columns exist in MSA baseline
         missing_cols = [col for col in required_baseline_cols if col not in msa_baseline_df.columns]
         if missing_cols:
             error_msg = f"❌ Missing required columns in MSA baseline data: {missing_cols}"
             logger.error(error_msg)
             raise ValueError(error_msg)
         
-        # Check for regions with missing baseline projections
-        regions_with_missing = msa_baseline_df[msa_baseline_df['ProjectedHPA1YFwd_MSABaseline'].isnull()][cfg.rcode_col].unique()
+        # Select only the required columns from MSA baseline
+        msa_baseline_df = msa_baseline_df[required_baseline_cols]
+        
+        # Select required columns from new MSA data
+        required_new_cols = cfg.id_columns + [cfg.date_col] + cfg.msa_new_columns
+        
+        # Verify required columns exist in new MSA data
+        missing_cols = [col for col in required_new_cols if col not in msa_new_df.columns]
+        if missing_cols:
+            error_msg = f"❌ Missing required columns in new MSA data: {missing_cols}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+        
+        # Select only the required columns from new MSA data
+        msa_new_df = msa_new_df[required_new_cols]
+        
+        # Drop regions with missing projections in MSA baseline
+        regions_with_missing = msa_baseline_df[msa_baseline_df[cfg.target_column].isnull()][cfg.id_columns[0]].unique()
         if len(regions_with_missing) > 0:
-            logger.warning(f"Found {len(regions_with_missing)} regions with missing baseline projections")
-            print(f"\n⚠️  Found {len(regions_with_missing)} regions with missing baseline projections:")
+            logger.warning(f"Found {len(regions_with_missing)} regions with missing projections")
+            print(f"\n⚠️  Found {len(regions_with_missing)} regions with missing projections:")
             for region in regions_with_missing:
                 print(f"  - Region: {region}")
             
-            # Remove regions with missing baseline projections
-            msa_baseline_df = msa_baseline_df[~msa_baseline_df[cfg.rcode_col].isin(regions_with_missing)]
-            logger.info(f"Removed {len(regions_with_missing)} regions with missing baseline projections")
-            print(f"✓ Removed {len(regions_with_missing)} regions with missing baseline projections")
+            # Remove regions with missing projections
+            msa_baseline_df = msa_baseline_df[~msa_baseline_df[cfg.id_columns[0]].isin(regions_with_missing)]
+            logger.info(f"Removed {len(regions_with_missing)} regions with missing projections")
+            print(f"✓ Removed {len(regions_with_missing)} regions with missing projections")
         
-        # Check for NaN values in remaining baseline columns
-        baseline_numeric_cols = ['ProjectedHPA1YFwd_USABaseline', 'ProjectedHPA1YFwd_MSABaseline']
-        for col in baseline_numeric_cols:
-            nan_count = msa_baseline_df[col].isnull().sum()
-            if nan_count > 0:
-                error_msg = f"❌ Found {nan_count} NaN values in {col} in MSA baseline data after removing regions with missing projections"
-                logger.error(error_msg)
-                raise ValueError(error_msg)
-        
-        # Select only the required columns from baseline data
-        msa_baseline_df = msa_baseline_df[required_baseline_cols]
-        
-        # Merge data on date and region
+        # Merge data on ID columns and date
+        merge_cols = cfg.id_columns + [cfg.date_col]
         merged_df = pd.merge(
             msa_baseline_df,
             msa_new_df,
-            on=[cfg.date_col, cfg.rcode_col, cfg.cs_name_col],
-            how='inner',
-            suffixes=('_baseline', '_new')
+            on=merge_cols,
+            how='inner'
         )
         
         # Get unique regions
-        unique_regions = merged_df[cfg.rcode_col].unique()
+        unique_regions = merged_df[cfg.id_columns[0]].unique()
         
         logger.info(f"Data merged successfully. Shape: {merged_df.shape}")
         logger.info(f"Found {len(unique_regions)} unique MSA regions")
@@ -715,7 +720,7 @@ def generateFinalOutput(merged_df, cfg):
     # Start with the base dataframe
     final_df = merged_df.copy()
     
-    # Initialize ProjectedHPA1YFwd_MSA column
+    # Initialize prediction columns
     final_df['ProjectedHPA1YFwd_MSA'] = np.nan
     final_df['Approach3_MSA_HPA1YrFwd'] = np.nan
     
@@ -726,7 +731,7 @@ def generateFinalOutput(merged_df, cfg):
         
         try:
             # Get region mask
-            region_mask = final_df[cfg.rcode_col] == region
+            region_mask = final_df[cfg.id_columns[0]] == region
             
             # Fill training predictions
             train_indices = results['train_data'].index
@@ -745,16 +750,25 @@ def generateFinalOutput(merged_df, cfg):
         except Exception as e:
             logger.warning(f"Error filling predictions for region {region}: {str(e)}")
     
+    # Set NaN values for the last 12 months for each region
+    for region in final_df[cfg.id_columns[0]].unique():
+        region_mask = final_df[cfg.id_columns[0]] == region
+        region_dates = final_df[region_mask][cfg.date_col].sort_values()
+        if len(region_dates) > 12:
+            last_12_months = region_dates.iloc[-12:]
+            mask = (final_df[cfg.id_columns[0]] == region) & (final_df[cfg.date_col].isin(last_12_months))
+            final_df.loc[mask, ['HPA1Yfwd', 'HPI1Y_fwd', 'USA_HPA1Yfwd', 'USA_HPI1Yfwd']] = np.nan
+    
     # Select and order the required columns
     required_columns = [
         cfg.date_col,
-        cfg.rcode_col,
-        cfg.cs_name_col,
+        cfg.id_columns[0],  # rcode
+        cfg.id_columns[1],  # cs_name
         'tag',
         'ProjectedHPA1YFwd_USABaseline',
         'ProjectedHPA1YFwd_MSABaseline',
-        cfg.hpi_col + '_new',
-        cfg.hpa12m_col + '_new',
+        cfg.usa_hpi_col,
+        cfg.usa_hpa12m_col,
         'HPA1Yfwd',
         'HPI1Y_fwd',
         'USA_HPA1Yfwd',
@@ -766,18 +780,11 @@ def generateFinalOutput(merged_df, cfg):
     # Select only the required columns
     final_df = final_df[required_columns]
     
-    # Rename columns to match required output
-    column_mapping = {
-        cfg.hpi_col + '_new': cfg.hpi_col,
-        cfg.hpa12m_col + '_new': cfg.hpa12m_col
-    }
-    final_df = final_df.rename(columns=column_mapping)
-    
     # Convert date to YYYY-MM-01 format
     final_df[cfg.date_col] = pd.to_datetime(final_df[cfg.date_col]).dt.to_period('M').dt.start_time
     
     # Sort by region and date
-    final_df = final_df.sort_values([cfg.rcode_col, cfg.date_col])
+    final_df = final_df.sort_values([cfg.id_columns[0], cfg.date_col])
     
     return final_df
 
@@ -931,13 +938,14 @@ def run_with_custom_paths(
     msa_new_data_path,
     output_path,
     date_col="Year_Month_Day",
-    rcode_col="rcode",
-    cs_name_col="cs_name",
-    hpi_col="HPI",
-    hpa12m_col="hpa12m",
+    id_columns=["rcode", "cs_name"],
+    msa_baseline_columns=["ProjectedHPA1YFwd_USABaseline", "ProjectedHPA1YFwd_MSABaseline"],
+    target_column="HPA1Yfwd",
+    usa_hpi_col="USA_HPI1Yfwd",
+    usa_hpa12m_col="USA_HPA1Yfwd",
+    msa_new_columns=[],
     start_date="1990-01-01",
     end_date="2025-01-01",
-    additional_features=None,
     all_models_list=None,
     all_model_params=None,
     grid_specs=None,
@@ -956,13 +964,14 @@ def run_with_custom_paths(
             self.msa_new_data_path = msa_new_data_path
             self.output_path = output_path
             self.date_col = date_col
-            self.rcode_col = rcode_col
-            self.cs_name_col = cs_name_col
-            self.hpi_col = hpi_col
-            self.hpa12m_col = hpa12m_col
+            self.id_columns = id_columns
+            self.msa_baseline_columns = msa_baseline_columns
+            self.target_column = target_column
+            self.usa_hpi_col = usa_hpi_col
+            self.usa_hpa12m_col = usa_hpa12m_col
+            self.msa_new_columns = msa_new_columns
             self.start_date = start_date
             self.end_date = end_date
-            self.additional_features = additional_features or []
             self.AllModelsList = all_models_list or [
                 'Ridge',
                 'RandomForest',
@@ -1003,8 +1012,8 @@ def run_with_custom_paths(
     skipped_count = 0
     REGION_RESULTS = {}
     for i, region in enumerate(unique_regions, 1):
-        region_df = merged_df[merged_df[cfg.rcode_col] == region].copy()
-        region_results = processRegionMSA(region, region_df, cfg, target_col='HPA1Yfwd')
+        region_df = merged_df[merged_df[cfg.id_columns[0]] == region].copy()
+        region_results = processRegionMSA(region, region_df, cfg, target_col=cfg.target_column)
         REGION_RESULTS[region] = region_results
         if region_results is not None:
             processed_count += 1
@@ -1059,10 +1068,10 @@ def main():
             print(f"\n[{i}/{len(unique_regions)}] Processing MSA region: {region}")
             
             # Filter data for this region
-            region_df = merged_df[merged_df[cfg.rcode_col] == region].copy()
+            region_df = merged_df[merged_df[cfg.id_columns[0]] == region].copy()
             
             # Process the region
-            region_results = processRegionMSA(region, region_df, cfg, target_col='HPA1Yfwd')
+            region_results = processRegionMSA(region, region_df, cfg, target_col=cfg.target_column)
             
             # Store results
             REGION_RESULTS[region] = region_results
@@ -1094,7 +1103,7 @@ def main():
             print(f"\nOutput columns: {list(final_output.columns)}")
             print(f"Output shape: {final_output.shape}")
             print(f"Date range: {final_output[cfg.date_col].min()} to {final_output[cfg.date_col].max()}")
-            print(f"Unique MSAs: {final_output[cfg.rcode_col].nunique()}")
+            print(f"Unique MSAs: {final_output[cfg.id_columns[0]].nunique()}")
             print(f"Train records: {(final_output['tag'] == 'train').sum()}")
             print(f"Test records: {(final_output['tag'] == 'test').sum()}")
             
