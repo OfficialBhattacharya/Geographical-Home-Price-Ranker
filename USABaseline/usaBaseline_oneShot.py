@@ -49,12 +49,17 @@ class CFG:
         
         # Data paths
         self.filePath = input("Enter input CSV file path [D:\\Geographical-Home-Price-Ranker\\AllProcessedFIles\\unified_monthly_data.csv]: ") or "D:\\Geographical-Home-Price-Ranker\\AllProcessedFIles\\unified_monthly_data.csv"
-        self.outputPath = input("Enter output CSV file path [D:\\Geographical-Home-Price-Ranker\\AllProcessedFIles\\USA_Baseline_20250101.csv]: ") or "D:\\Geographical-Home-Price-Ranker\\AllProcessedFIles\\USA_Baseline_20250101.csv"
         
         # Date configurations
         self.dateCol = input("Enter date column name [Date]: ") or "Date"
         self.start_date = input("Enter start date (YYYY-MM-DD) [1990-01-01]: ") or "1990-01-01"
-        self.end_date = input("Enter end date (YYYY-MM-DD) [2025-01-01]: ") or "2025-01-01"
+        self.end_date = input("Enter end date (YYYY-MM-DD): ")
+        if not self.end_date:
+            raise ValueError("End date is required. Please provide a valid date in YYYY-MM-DD format.")
+        
+        # Generate output path with end date
+        end_date_formatted = self.end_date.replace('-', '')
+        self.outputPath = input(f"Enter output CSV file path [D:\\Geographical-Home-Price-Ranker\\AllProcessedFIles\\USA_Baseline_{end_date_formatted}.csv]: ") or f"D:\\Geographical-Home-Price-Ranker\\AllProcessedFIles\\USA_Baseline_{end_date_formatted}.csv"
         
         # Feature configurations
         feature_input = input("Enter feature columns (comma-separated) []: ")
@@ -93,11 +98,11 @@ class CFG:
     def _set_default_configurations(self):
         """Set default configurations"""
         self.filePath = "D:\\Geographical-Home-Price-Ranker\\AllProcessedFIles\\unified_monthly_data.csv"
-        self.outputPath = "D:\\Geographical-Home-Price-Ranker\\AllProcessedFIles\\USA_Baseline_20250101.csv"
+        self.outputPath = None  # Will be set based on end_date
         self.idList = []
         self.dateCol = "Date"
         self.start_date = "1990-01-01"
-        self.end_date = "2025-01-01"
+        self.end_date = None  # Must be provided by user
         self.featureList = []
         self.targetCol = ""
         self.lagList = [1,3,6,8,12,15,18,24,36,48,60]
@@ -1026,7 +1031,18 @@ def plotResults(results, output_path=None):
     
     # Save plot if output path provided
     if output_path:
-        plot_path = output_path.replace('.csv', '_model_results.png')
+        # Extract end date from output path or use current date
+        if '_' in output_path and output_path.endswith('.csv'):
+            # Try to extract date from filename like USA_Baseline_20250101.csv
+            filename = output_path.split('\\')[-1]  # Get filename
+            if '_' in filename and filename.endswith('.csv'):
+                date_part = filename.split('_')[-1].replace('.csv', '')
+                plot_path = output_path.replace('.csv', f'_model_results_{date_part}.png')
+            else:
+                plot_path = output_path.replace('.csv', '_model_results.png')
+        else:
+            plot_path = output_path.replace('.csv', '_model_results.png')
+        
         plt.savefig(plot_path, dpi=300, bbox_inches='tight')
         logger.info(f"Plot saved to: {plot_path}")
         print(f"✓ Plot saved to: {plot_path}")
@@ -1285,7 +1301,19 @@ def predictTimeWindow(start_date, end_date, plot_results=True, save_plot=False, 
             
             # Save plot if requested
             if save_plot and output_dir:
-                plot_filename = f"usa_timewindow_{start_date}_{end_date}_predictions.png"
+                # Get the end date from USA_RESULTS if available
+                usa_end_date = ""
+                if USA_RESULTS and 'original_data' in USA_RESULTS:
+                    # Try to extract end date from the data or use a default
+                    try:
+                        date_col = USA_RESULTS.get('date_column', 'Date')
+                        if date_col in USA_RESULTS['original_data'].columns:
+                            max_date = USA_RESULTS['original_data'][date_col].max()
+                            usa_end_date = max_date.strftime('%Y%m%d') if hasattr(max_date, 'strftime') else ""
+                    except:
+                        usa_end_date = ""
+                
+                plot_filename = f"usa_timewindow_{start_date}_{end_date}_predictions_{usa_end_date}.png"
                 plot_path = f"{output_dir}/{plot_filename}"
                 plt.savefig(plot_path, dpi=300, bbox_inches='tight')
                 logger.info(f"Plot saved to: {plot_path}")
@@ -1333,8 +1361,24 @@ def main():
         print("GEOGRAPHICAL HOME PRICE RANKER - USA BASELINE")
         print("="*60)
         
+        # Get end date from user
+        end_date = input("Enter end date (YYYY-MM-DD): ")
+        if not end_date:
+            raise ValueError("End date is required. Please provide a valid date in YYYY-MM-DD format.")
+        
+        # Validate date format
+        try:
+            pd.to_datetime(end_date)
+        except:
+            raise ValueError("Invalid date format. Please use YYYY-MM-DD format (e.g., 2024-12-31)")
+        
         # Step 1: Initialize configuration
         cfg = CFG(get_user_input=False)  # Set to True to get user input
+        cfg.end_date = end_date
+        
+        # Generate output path with end date
+        end_date_formatted = end_date.replace('-', '')
+        cfg.outputPath = f"D:\\Geographical-Home-Price-Ranker\\AllProcessedFIles\\USA_Baseline_{end_date_formatted}.csv"
         
         # Step 2: Load and check data
         df = loadDataAndCheckAllMonths(cfg.filePath, cfg.dateCol, cfg.start_date, cfg.end_date)
@@ -1409,13 +1453,14 @@ def main():
         print(f"❌ Pipeline failed: {str(e)}")
         raise e
 
-def run_with_custom_paths(usa_file, output_file, config=None):
+def run_with_custom_paths(usa_file, output_file, end_date, config=None):
     """
     Run the USA baseline model with custom file paths and configurations.
     
     Parameters:
     - usa_file: Path to the input USA data CSV file
     - output_file: Path to save the output results CSV file
+    - end_date: End date in YYYY-MM-DD format (required)
     - config: Dictionary containing custom configurations (optional)
               If not provided, default configurations will be used
     
@@ -1425,20 +1470,30 @@ def run_with_custom_paths(usa_file, output_file, config=None):
     global USA_RESULTS
     
     try:
+        # Validate end_date parameter
+        if not end_date or not isinstance(end_date, str):
+            raise ValueError("end_date parameter is required. Please provide a valid date in YYYY-MM-DD format.")
+        
+        # Validate date format
+        try:
+            pd.to_datetime(end_date)
+        except:
+            raise ValueError("Invalid end_date format. Please use YYYY-MM-DD format (e.g., 2024-12-31)")
+        
         print("="*60)
         print("GEOGRAPHICAL HOME PRICE RANKER - USA BASELINE (CUSTOM CONFIG)")
         print("="*60)
         
         # Create custom configuration
         class CustomCFG:
-            def __init__(self, usa_file, output_file, config=None):
+            def __init__(self, usa_file, output_file, end_date, config=None):
                 # Default configurations
                 self.filePath = usa_file
                 self.outputPath = output_file
                 self.idList = []
                 self.dateCol = "Date"
                 self.start_date = "1990-01-01"
-                self.end_date = "2025-01-01"
+                self.end_date = end_date
                 self.featureList = []
                 self.targetCol = ""
                 self.lagList = [1,3,6,8,12,15,18,24,36,48,60]
@@ -1477,7 +1532,7 @@ def run_with_custom_paths(usa_file, output_file, config=None):
                             setattr(self, key, value)
         
         # Initialize configuration with custom paths and config
-        cfg = CustomCFG(usa_file, output_file, config)
+        cfg = CustomCFG(usa_file, output_file, end_date, config)
         
         # Step 2: Load and check data
         df = loadDataAndCheckAllMonths(cfg.filePath, cfg.dateCol, cfg.start_date, cfg.end_date)
@@ -1552,7 +1607,8 @@ def run_with_custom_paths(usa_file, output_file, config=None):
 # Example 1: Basic usage with custom paths
 # run_with_custom_paths(
 #     usa_file="D:\\Geographical-Home-Price-Ranker\\AllProcessedFIles\\unified_monthly_data.csv",
-#     output_file="D:\\Geographical-Home-Price-Ranker\\AllProcessedFIles\\USA_Baseline_20250101.csv"
+#     output_file="D:\\Geographical-Home-Price-Ranker\\AllProcessedFIles\\USA_Baseline_20250101.csv",
+#     end_date="2025-01-01"
 # )
 # 
 # Example 2: Advanced usage with custom configurations
@@ -1578,6 +1634,7 @@ def run_with_custom_paths(usa_file, output_file, config=None):
 # run_with_custom_paths(
 #     usa_file="D:\\Geographical-Home-Price-Ranker\\AllProcessedFIles\\unified_monthly_data.csv",
 #     output_file="D:\\Geographical-Home-Price-Ranker\\AllProcessedFIles\\USA_Baseline_Custom_20250101.csv",
+#     end_date="2024-12-31",
 #     config=custom_config
 # )
 # 
@@ -1593,6 +1650,7 @@ def run_with_custom_paths(usa_file, output_file, config=None):
 # run_with_custom_paths(
 #     usa_file="D:\\Geographical-Home-Price-Ranker\\AllProcessedFIles\\unified_monthly_data.csv",
 #     output_file="D:\\Geographical-Home-Price-Ranker\\AllProcessedFIles\\USA_Baseline_Minimal_20250101.csv",
+#     end_date="2024-12-31",
 #     config=minimal_config
 # )
 """
@@ -1604,7 +1662,8 @@ if __name__ == "__main__":
 '''
 run_with_custom_paths(
     usa_file="D:\\Geographical-Home-Price-Ranker\\AllProcessedFIles\\unified_monthly_data.csv",
-    output_file="D:\\Geographical-Home-Price-Ranker\\AllProcessedFIles\\USA_Baseline_20250101.csv"
+    output_file="D:\\Geographical-Home-Price-Ranker\\AllProcessedFIles\\USA_Baseline_20250101.csv",
+    end_date="2025-01-01"
 )
 custom_config = {
     'start_date': '2010-01-01',
@@ -1627,6 +1686,7 @@ custom_config = {
 run_with_custom_paths(
     usa_file="D:\\Geographical-Home-Price-Ranker\\AllProcessedFIles\\unified_monthly_data.csv",
     output_file="D:\\Geographical-Home-Price-Ranker\\AllProcessedFIles\\USA_Baseline_Custom_20250101.csv",
+    end_date="2024-12-31",
     config=custom_config
 )
 minimal_config = {
@@ -1640,6 +1700,7 @@ minimal_config = {
 run_with_custom_paths(
     usa_file="D:\\Geographical-Home-Price-Ranker\\AllProcessedFIles\\unified_monthly_data.csv",
     output_file="D:\\Geographical-Home-Price-Ranker\\AllProcessedFIles\\USA_Baseline_Minimal_20250101.csv",
+    end_date="2024-12-31",
     config=minimal_config
 )
 '''

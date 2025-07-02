@@ -30,13 +30,18 @@ class CFG:
     Configuration class for MSA Baseline model with USA data integration.
     """
     
-    def __init__(self, get_user_input=True):
+    def __init__(self, get_user_input=True, end_date=None):
         logger.info("Initializing CFG class for MSA Baseline with USA data...")
         
         if get_user_input:
             self._get_user_configurations()
         else:
             self._set_default_configurations()
+        
+        # Override end_date if provided
+        if end_date is not None:
+            self.end_date = end_date
+            logger.info(f"End date overridden to: {self.end_date}")
         
         self._setup_plotting_specs()
         logger.info("CFG initialization complete.")
@@ -59,7 +64,9 @@ class CFG:
         
         # Date configurations
         self.start_date = input("Enter start date (YYYY-MM-DD) [1990-01-01]: ") or "1990-01-01"
-        self.end_date = input("Enter end date (YYYY-MM-DD) [2025-01-01]: ") or "2025-01-01"
+        self.end_date = input("Enter end date (YYYY-MM-DD): ")
+        if not self.end_date:
+            raise ValueError("❌ End date is required. Please provide a valid date in YYYY-MM-DD format.")
         
         # Feature configurations
         feature_input = input("Enter additional feature columns (comma-separated) []: ")
@@ -83,7 +90,7 @@ class CFG:
         
         # Date range
         self.start_date = "1990-01-01"
-        self.end_date = "2025-01-01"
+        self.end_date = None  # Will be set by user input or parameter
         
         # Additional features
         self.additional_features = []
@@ -645,7 +652,7 @@ def createTrainTestTags(df, cfg):
     df_tagged = df.copy()
     
     # Initialize tag column
-    df_tagged['tag'] = 'train'
+    df_tagged['tag'] = 'Train'
     
     # For each MSA, mark the last 12 months (where HPA1Yfwd is NaN) as test
     for region in df_tagged[cfg.rcode_col].unique():
@@ -659,10 +666,10 @@ def createTrainTestTags(df, cfg):
         test_mask = region_df['HPA1Yfwd'].isna()
         
         # Update the main dataframe
-        df_tagged.loc[region_mask & df_tagged['HPA1Yfwd'].isna(), 'tag'] = 'test'
+        df_tagged.loc[region_mask & df_tagged['HPA1Yfwd'].isna(), 'tag'] = 'Test'
     
-    train_count = (df_tagged['tag'] == 'train').sum()
-    test_count = (df_tagged['tag'] == 'test').sum()
+    train_count = (df_tagged['tag'] == 'Train').sum()
+    test_count = (df_tagged['tag'] == 'Test').sum()
     
     logger.info(f"Train/test tags created. Train: {train_count}, Test: {test_count}")
     print(f"✓ Train/test split created - Train: {train_count}, Test: {test_count}")
@@ -763,8 +770,8 @@ def processRegionMSA(region, df_region, cfg, target_col='HPA1Yfwd'):
             return None
         
         # Separate train and test data
-        train_df = df_region[df_region['tag'] == 'train'].copy()
-        test_df = df_region[df_region['tag'] == 'test'].copy()
+        train_df = df_region[df_region['tag'] == 'Train'].copy()
+        test_df = df_region[df_region['tag'] == 'Test'].copy()
         
         # Check if we have enough training data
         if len(train_df) < 12:  # At least 1 year of training data
@@ -958,7 +965,7 @@ def generateFinalOutput(merged_df, cfg):
         final_df['USA_HPI1Yfwd'] = np.nan
     
     # Set USA baseline columns to NaN for test rows
-    test_mask = final_df['tag'] == 'test'
+    test_mask = final_df['tag'] == 'Test'
     final_df.loc[test_mask, 'USA_HPA1Yfwd'] = np.nan
     final_df.loc[test_mask, 'USA_HPI1Yfwd'] = np.nan
     
@@ -1010,7 +1017,22 @@ def main():
         print("="*70)
         
         # Step 1: Initialize configuration
-        cfg = CFG(get_user_input=False)  # Set to True to get user input
+        print("="*70)
+        print("MSA BASELINE CONFIGURATION")
+        print("="*70)
+        
+        # Get end date from user
+        end_date = input("Enter end date (YYYY-MM-DD): ")
+        if not end_date:
+            raise ValueError("❌ End date is required. Please provide a valid date in YYYY-MM-DD format.")
+        
+        # Validate date format
+        try:
+            pd.to_datetime(end_date)
+        except:
+            raise ValueError("❌ Invalid date format. Please use YYYY-MM-DD format (e.g., 2024-12-31)")
+        
+        cfg = CFG(get_user_input=False, end_date=end_date)
         
         # Step 1.5: Validate file paths and prepare directories
         validateAndPreparePaths(cfg)
@@ -1104,8 +1126,8 @@ def main():
             print(f"Output shape: {final_output.shape}")
             print(f"Date range: {final_output['Year_Month_Day'].min()} to {final_output['Year_Month_Day'].max()}")
             print(f"Unique MSAs: {final_output['rcode'].nunique()}")
-            print(f"Train records: {(final_output['tag'] == 'train').sum()}")
-            print(f"Test records: {(final_output['tag'] == 'test').sum()}")
+            print(f"Train records: {(final_output['tag'] == 'Train').sum()}")
+            print(f"Test records: {(final_output['tag'] == 'Test').sum()}")
             
         else:
             print("❌ No MSA regions were successfully processed")
@@ -1123,7 +1145,7 @@ if __name__ == "__main__":
     main()
 
 # Example usage with custom paths and model parameters
-def run_with_custom_paths(msa_file, usa_file, output_file, model_params=None):
+def run_with_custom_paths(msa_file, usa_file, output_file, end_date=None, model_params=None):
     """
     Run the MSA baseline model with custom file paths and model parameters.
     
@@ -1131,6 +1153,7 @@ def run_with_custom_paths(msa_file, usa_file, output_file, model_params=None):
     - msa_file: Path to MSA raw data CSV
     - usa_file: Path to USA raw data CSV  
     - output_file: Path for output CSV
+    - end_date: End date in YYYY-MM-DD format (required)
     - model_params: Dictionary of model parameters to override defaults
     """
     global REGION_RESULTS
@@ -1144,9 +1167,17 @@ def run_with_custom_paths(msa_file, usa_file, output_file, model_params=None):
             raise ValueError("❌ USA file path must be a non-empty string")
         if not output_file or not isinstance(output_file, str):
             raise ValueError("❌ Output file path must be a non-empty string")
+        if not end_date or not isinstance(end_date, str):
+            raise ValueError("❌ End date must be a non-empty string in YYYY-MM-DD format")
+        
+        # Validate end date format
+        try:
+            pd.to_datetime(end_date)
+        except:
+            raise ValueError("❌ Invalid end date format. Please use YYYY-MM-DD format (e.g., 2024-12-31)")
         
         # Create configuration with custom paths
-        cfg = CFG(get_user_input=False)
+        cfg = CFG(get_user_input=False, end_date=end_date)
         cfg.msa_file_path = msa_file
         cfg.usa_file_path = usa_file
         cfg.output_path = output_file
@@ -1238,7 +1269,7 @@ def run_with_custom_paths(msa_file, usa_file, output_file, model_params=None):
         print(f"{'='*60}")
         print(f"✓ Successfully processed: {processed_count} MSA regions")
         print(f"⚠️  Skipped: {skipped_count} MSA regions")
-        print(f"📊 Total regions: {len(unique_regions)}")
+        print(f"📊 Total regions processed: {len(unique_regions)}")
         
         # Generate final output
         if processed_count > 0:
@@ -1284,8 +1315,8 @@ def run_with_custom_paths(msa_file, usa_file, output_file, model_params=None):
             print(f"Output shape: {final_output.shape}")
             print(f"Date range: {final_output['Year_Month_Day'].min()} to {final_output['Year_Month_Day'].max()}")
             print(f"Unique MSAs: {final_output['rcode'].nunique()}")
-            print(f"Train records: {(final_output['tag'] == 'train').sum()}")
-            print(f"Test records: {(final_output['tag'] == 'test').sum()}")
+            print(f"Train records: {(final_output['tag'] == 'Train').sum()}")
+            print(f"Test records: {(final_output['tag'] == 'Test').sum()}")
             
         else:
             print("❌ No MSA regions were successfully processed")
@@ -1321,75 +1352,81 @@ def run_with_model_params():
         msa_file='sample_msa_data.csv',
         usa_file='sample_usa_data.csv',
         output_file='sample_output.csv',
+        end_date='2023-12-31',
         model_params=model_params
     )
 
 # Uncomment to run with custom model parameters
 # run_with_model_params()
 
-def create_sample_data_demo():
-    """
-    Create sample data to demonstrate the MSA baseline script functionality.
-    """
-    print("Creating sample MSA and USA data for demonstration...")
-    
-    # Create sample dates
-    dates = pd.date_range(start='2020-01-01', end='2023-12-01', freq='MS')
-    
-    # Sample MSA data
-    msa_regions = ['MSA_12345', 'MSA_23456', 'MSA_34567']
-    region_names = ['Metro Area 1', 'Metro Area 2', 'Metro Area 3']
-    
-    msa_data = []
-    for region, name in zip(msa_regions, region_names):
-        for date in dates:
-            # Simulate realistic housing data
-            base_hpi = 250 + np.random.uniform(-50, 50)
-            seasonal_factor = 1 + 0.02 * np.sin(2 * np.pi * (date.month - 1) / 12)
-            trend_factor = 1 + 0.03 * (date.year - 2020)
-            
-            hpi = base_hpi * seasonal_factor * trend_factor + np.random.normal(0, 5)
-            hpa12m = np.random.uniform(0.02, 0.08) + 0.01 * np.sin(2 * np.pi * (date.month - 1) / 12)
-            
-            msa_data.append({
-                'Year_Month_Day': date,
-                'rcode': region,
-                'cs_name': name,
-                'HPI': hpi,
-                'hpa12m': hpa12m,
-                'unemployment_rate': np.random.uniform(3, 7),
-                'median_income': np.random.uniform(50000, 80000)
-            })
-    
-    msa_df = pd.DataFrame(msa_data)
-    
-    # Sample USA data
-    usa_data = []
-    for date in dates:
-        usa_data.append({
-            'Year_Month_Day': date,
-            'ProjectedHPA1YFwd_USABaseline': np.random.uniform(0.03, 0.07),
-            'USA_HPA1Yfwd': np.random.uniform(0.025, 0.065),
-            'USA_HPI1Yfwd': 260 + np.random.uniform(-10, 10)
-        })
-    
-    usa_df = pd.DataFrame(usa_data)
-    
-    # Save sample data
-    msa_df.to_csv('sample_msa_data.csv', index=False)
-    usa_df.to_csv('sample_usa_data.csv', index=False)
-    
-    print(f"✓ Sample MSA data saved: sample_msa_data.csv ({msa_df.shape})")
-    print(f"✓ Sample USA data saved: sample_usa_data.csv ({usa_df.shape})")
-    print("✓ You can now run: run_with_custom_paths('sample_msa_data.csv', 'sample_usa_data.csv', 'sample_output.csv')")
-    
-    return msa_df, usa_df
+# def create_sample_data_demo():
+#     """
+#     Create sample data to demonstrate the MSA baseline script functionality.
+#     """
+#     print("Creating sample MSA and USA data for demonstration...")
+#     
+#     # Create sample dates
+#     dates = pd.date_range(start='2020-01-01', end='2023-12-01', freq='MS')
+#     
+#     # Sample MSA data
+#     msa_regions = ['MSA_12345', 'MSA_23456', 'MSA_34567']
+#     region_names = ['Metro Area 1', 'Metro Area 2', 'Metro Area 3']
+#     
+#     msa_data = []
+#     for region, name in zip(msa_regions, region_names):
+#         for date in dates:
+#             # Simulate realistic housing data
+#             base_hpi = 250 + np.random.uniform(-50, 50)
+#             seasonal_factor = 1 + 0.02 * np.sin(2 * np.pi * (date.month - 1) / 12)
+#             trend_factor = 1 + 0.03 * (date.year - 2020)
+#             
+#             hpi = base_hpi * seasonal_factor * trend_factor + np.random.normal(0, 5)
+#             hpa12m = np.random.uniform(0.02, 0.08) + 0.01 * np.sin(2 * np.pi * (date.month - 1) / 12)
+#             
+#             msa_data.append({
+#                 'Year_Month_Day': date,
+#                 'rcode': region,
+#                 'cs_name': name,
+#                 'HPI': hpi,
+#                 'hpa12m': hpa12m,
+#                 'unemployment_rate': np.random.uniform(3, 7),
+#                 'median_income': np.random.uniform(50000, 80000)
+#             })
+#     
+#     msa_df = pd.DataFrame(msa_data)
+#     
+#     # Sample USA data
+#     usa_data = []
+#     for date in dates:
+#         usa_data.append({
+#             'Year_Month_Day': date,
+#             'ProjectedHPA1YFwd_USABaseline': np.random.uniform(0.03, 0.07),
+#             'USA_HPA1Yfwd': np.random.uniform(0.025, 0.065),
+#             'USA_HPI1Yfwd': 260 + np.random.uniform(-10, 10)
+#         })
+#     
+#     usa_df = pd.DataFrame(usa_data)
+#     
+#     # Save sample data
+#     msa_df.to_csv('sample_msa_data.csv', index=False)
+#     usa_df.to_csv('sample_usa_data.csv', index=False)
+#     
+#     print(f"✓ Sample MSA data saved: sample_msa_data.csv ({msa_df.shape})")
+#     print(f"✓ Sample USA data saved: sample_usa_data.csv ({usa_df.shape})")
+#     print("✓ You can now run: run_with_custom_paths('sample_msa_data.csv', 'sample_usa_data.csv', 'sample_output.csv', '2023-12-31')")
+#     
+#     return msa_df, usa_df
 
 # Uncomment the lines below to create and test with sample data
 # create_sample_data_demo()
-# run_with_custom_paths('sample_msa_data.csv', 'sample_usa_data.csv', 'sample_output.csv')
+# run_with_custom_paths('sample_msa_data.csv', 'sample_usa_data.csv', 'sample_output.csv', '2023-12-31')
 
 '''
+# ============================================================================
+# EXAMPLE USAGE CODE - UNCOMMENT TO USE
+# ============================================================================
+
+# Example 1: Run with custom paths and model parameters
 model_params = {
     'models': ['Ridge', 'RandomForest', 'XGBoost'],
     'model_params': {
@@ -1407,6 +1444,303 @@ run_with_custom_paths(
     msa_file='your_msa_data.csv',
     usa_file='your_usa_data.csv',
     output_file='your_output.csv',
+    end_date='2024-12-31',
     model_params=model_params
 )
+
+# Example 2: Run test with specific rcodes
+test_rcodes = ['MSA_12345', 'MSA_23456', 'MSA_34567']
+
+test_model_params = {
+    'models': ['Ridge', 'RandomForest', 'XGBoost'],
+    'model_params': {
+        'Ridge': {'alpha': [1.0]},
+        'RandomForest': {'n_estimators': [100], 'max_depth': [10]},
+        'XGBoost': {'n_estimators': [100], 'max_depth': [6], 'learning_rate': [0.1]}
+    },
+    'lag_list': [1, 3, 6, 12],
+    'rate_list': [1, 3, 6],
+    'moving_averages': [3, 6, 12],
+    'target_forward': 12
+}
+
+run_test_with_rcodes(
+    rcodes_list=test_rcodes,
+    msa_file='your_msa_data.csv',
+    usa_file='your_usa_data.csv',
+    output_file='testBaseline_Results.csv',
+    end_date='2024-12-31',
+    model_params=test_model_params
+)
+
+# Example 3: Simple run with minimal parameters
+run_with_custom_paths(
+    msa_file='MSA_raw_data.csv',
+    usa_file='USA_raw_data.csv',
+    output_file='MSA_Baseline_Results.csv',
+    end_date='2024-12-31'
+)
+
+# ============================================================================
+# END EXAMPLE USAGE CODE
+# ============================================================================
 '''
+
+def run_test_with_rcodes(rcodes_list, msa_file, usa_file, output_file, end_date=None, model_params=None):
+    """
+    Run the MSA baseline model with custom file paths and model parameters for specific rcodes only.
+    This is useful for testing the pipeline on a subset of regions.
+    
+    Parameters:
+    - rcodes_list: List of rcodes to process (e.g., ['MSA_12345', 'MSA_23456'])
+    - msa_file: Path to MSA raw data CSV
+    - usa_file: Path to USA raw data CSV  
+    - output_file: Path for output CSV
+    - end_date: End date in YYYY-MM-DD format (required)
+    - model_params: Dictionary of model parameters to override defaults
+    """
+    global REGION_RESULTS
+    REGION_RESULTS = {}  # Reset results
+    
+    try:
+        # Validate input parameters
+        if not rcodes_list or not isinstance(rcodes_list, list) or len(rcodes_list) == 0:
+            raise ValueError("❌ rcodes_list must be a non-empty list of rcodes")
+        if not msa_file or not isinstance(msa_file, str):
+            raise ValueError("❌ MSA file path must be a non-empty string")
+        if not usa_file or not isinstance(usa_file, str):
+            raise ValueError("❌ USA file path must be a non-empty string")
+        if not output_file or not isinstance(output_file, str):
+            raise ValueError("❌ Output file path must be a non-empty string")
+        if not end_date or not isinstance(end_date, str):
+            raise ValueError("❌ End date must be a non-empty string in YYYY-MM-DD format")
+        
+        # Validate end date format
+        try:
+            pd.to_datetime(end_date)
+        except:
+            raise ValueError("❌ Invalid end date format. Please use YYYY-MM-DD format (e.g., 2024-12-31)")
+        
+        # Create configuration with custom paths
+        cfg = CFG(get_user_input=False, end_date=end_date)
+        cfg.msa_file_path = msa_file
+        cfg.usa_file_path = usa_file
+        cfg.output_path = output_file
+        
+        # Update model parameters if provided
+        if model_params:
+            if not isinstance(model_params, dict):
+                raise ValueError("❌ model_params must be a dictionary")
+            
+            # Update model list if provided
+            if 'models' in model_params:
+                cfg.AllModelsList = model_params['models']
+            
+            # Update model parameters if provided
+            if 'model_params' in model_params:
+                for model_name, params in model_params['model_params'].items():
+                    if model_name in cfg.AllModelParams:
+                        cfg.AllModelParams[model_name].update(params)
+            
+            # Update feature engineering parameters if provided
+            if 'lag_list' in model_params:
+                cfg.lagList = model_params['lag_list']
+            if 'rate_list' in model_params:
+                cfg.rateList = model_params['rate_list']
+            if 'moving_averages' in model_params:
+                cfg.movingAverages = model_params['moving_averages']
+            if 'target_forward' in model_params:
+                cfg.targetForward = model_params['target_forward']
+        
+        print(f"Running MSA Baseline TEST with specific rcodes:")
+        print(f"  Target rcodes: {rcodes_list}")
+        print(f"  MSA data: {msa_file}")
+        print(f"  USA data: {usa_file}")
+        print(f"  Output: {output_file}")
+        print("\nModel Configuration:")
+        print(f"  Models: {cfg.AllModelsList}")
+        print(f"  Lags: {cfg.lagList}")
+        print(f"  Rates: {cfg.rateList}")
+        print(f"  Moving Averages: {cfg.movingAverages}")
+        print(f"  Target Forward: {cfg.targetForward}")
+        
+        # Validate paths before running
+        validateAndPreparePaths(cfg)
+        
+        # Run the main pipeline (skip the initial validation in main since we did it here)
+        print("="*70)
+        print("MSA BASELINE TEST WITH SPECIFIC RCODES")
+        print("="*70)
+        
+        # Load and merge data
+        merged_df, unique_regions = loadAndMergeData(cfg)
+        
+        # Filter data to only include the specified rcodes
+        print(f"Filtering data to include only specified rcodes: {rcodes_list}")
+        merged_df = merged_df[merged_df[cfg.rcode_col].isin(rcodes_list)].copy()
+        
+        # Get the filtered unique regions
+        unique_regions = merged_df[cfg.rcode_col].unique()
+        unique_regions = [r for r in unique_regions if pd.notna(r)]
+        
+        # Check if any of the specified rcodes were found
+        found_rcodes = set(unique_regions)
+        requested_rcodes = set(rcodes_list)
+        missing_rcodes = requested_rcodes - found_rcodes
+        
+        if missing_rcodes:
+            print(f"⚠️  Warning: The following rcodes were not found in the data: {missing_rcodes}")
+        
+        if len(unique_regions) == 0:
+            raise ValueError("❌ None of the specified rcodes were found in the data")
+        
+        print(f"✓ Found {len(unique_regions)} rcodes in the data: {unique_regions}")
+        print(f"✓ Filtered data shape: {merged_df.shape}")
+        
+        # Fill missing data by region
+        merged_df = fillMissingDataByRegion(merged_df, cfg)
+        
+        # Create forward-looking variables
+        merged_df = createForwardLookingVariables(merged_df, cfg)
+        
+        # Create train/test tags
+        merged_df = createTrainTestTags(merged_df, cfg)
+        
+        # Add engineered features
+        merged_df = addAllFeatures(merged_df, cfg)
+        
+        print(f"\nProcessing {len(unique_regions)} MSA regions for test...")
+        
+        # Process each MSA region
+        processed_count = 0
+        skipped_count = 0
+        
+        for i, region in enumerate(unique_regions, 1):
+            print(f"\n[{i}/{len(unique_regions)}] Processing MSA region: {region}")
+            
+            # Filter data for this region
+            region_df = merged_df[merged_df[cfg.rcode_col] == region].copy()
+            
+            # Process the region
+            region_results = processRegionMSA(region, region_df, cfg, target_col='HPA1Yfwd')
+            
+            # Store results
+            REGION_RESULTS[region] = region_results
+            
+            if region_results is not None:
+                processed_count += 1
+            else:
+                skipped_count += 1
+        
+        print(f"\n{'='*60}")
+        print("MSA TEST PROCESSING COMPLETE")
+        print(f"{'='*60}")
+        print(f"✓ Successfully processed: {processed_count} MSA regions")
+        print(f"⚠️  Skipped: {skipped_count} MSA regions")
+        print(f"📊 Total regions processed: {len(unique_regions)}")
+        
+        # Generate final output
+        if processed_count > 0:
+            final_output = generateFinalOutput(merged_df, cfg)
+            
+            # Save final output with error handling
+            try:
+                print(f"Saving test output to: {cfg.output_path}")
+                final_output.to_csv(cfg.output_path, index=False)
+                
+                # Verify the file was saved successfully
+                if os.path.exists(cfg.output_path):
+                    file_size = os.path.getsize(cfg.output_path)
+                    logger.info(f"Test output saved successfully to: {cfg.output_path} ({file_size} bytes)")
+                    print(f"✓ Test output saved to: {cfg.output_path} ({file_size / 1024:.1f} KB)")
+                else:
+                    raise FileNotFoundError("Output file was not created successfully")
+                    
+            except PermissionError:
+                error_msg = f"❌ Permission denied: Cannot write to {cfg.output_path}"
+                logger.error(error_msg)
+                print(error_msg)
+                print("  Try running with administrator privileges or choose a different output location.")
+                raise
+            except OSError as e:
+                error_msg = f"❌ OS Error writing file: {str(e)}"
+                logger.error(error_msg)
+                print(error_msg)
+                raise
+            except Exception as e:
+                error_msg = f"❌ Unexpected error saving file: {str(e)}"
+                logger.error(error_msg)
+                print(error_msg)
+                raise
+            
+            # Display sample of final output
+            print(f"\n{'='*50}")
+            print("SAMPLE OF TEST OUTPUT")
+            print(f"{'='*50}")
+            print(final_output.head(10))
+            
+            print(f"\nTest output columns: {list(final_output.columns)}")
+            print(f"Test output shape: {final_output.shape}")
+            print(f"Date range: {final_output['Year_Month_Day'].min()} to {final_output['Year_Month_Day'].max()}")
+            print(f"Test MSAs: {final_output['rcode'].nunique()}")
+            print(f"Train records: {(final_output['tag'] == 'Train').sum()}")
+            print(f"Test records: {(final_output['tag'] == 'Test').sum()}")
+            
+        else:
+            print("❌ No MSA regions were successfully processed")
+        
+        print(f"\n{'='*70}")
+        print("MSA BASELINE TEST PIPELINE COMPLETE!")
+        print(f"{'='*70}")
+        
+        return final_output
+        
+    except Exception as e:
+        logger.error(f"Test pipeline execution failed: {str(e)}")
+        print(f"❌ Test pipeline failed: {str(e)}")
+        raise e
+
+# Example usage of the test function
+def example_test_usage():
+    """
+    Example of how to use the run_test_with_rcodes function for testing.
+    """
+    # Define a list of rcodes to test
+    test_rcodes = ['MSA_12345', 'MSA_23456', 'MSA_34567']
+    
+    # Example model parameters for testing
+    test_model_params = {
+        'models': ['Ridge', 'RandomForest', 'XGBoost'],
+        'model_params': {
+            'Ridge': {'alpha': [1.0]},
+            'RandomForest': {'n_estimators': [100], 'max_depth': [10]},
+            'XGBoost': {'n_estimators': [100], 'max_depth': [6], 'learning_rate': [0.1]}
+        },
+        'lag_list': [1, 3, 6, 12],
+        'rate_list': [1, 3, 6],
+        'moving_averages': [3, 6, 12],
+        'target_forward': 12
+    }
+    
+    print("Example test run with specific rcodes:")
+    print(f"Test rcodes: {test_rcodes}")
+    
+    # Run the test
+    result = run_test_with_rcodes(
+        rcodes_list=test_rcodes,
+        msa_file='your_msa_data.csv',
+        usa_file='your_usa_data.csv',
+        output_file='testBaseline_Results.csv',
+        end_date='2024-12-31',
+        model_params=test_model_params
+    )
+    
+    if result is not None:
+        print("✓ Test run completed successfully!")
+        print(f"✓ Output file: testBaseline_Results.csv")
+        print(f"✓ Output shape: {result.shape}")
+    else:
+        print("❌ Test run failed")
+
+# Uncomment the line below to run the example
+# example_test_usage()

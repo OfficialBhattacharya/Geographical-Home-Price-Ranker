@@ -72,7 +72,9 @@ class CFG:
         
         # Date configurations
         self.start_date = input("Enter start date (YYYY-MM-DD) [1990-01-01]: ") or "1990-01-01"
-        self.end_date = input("Enter end date (YYYY-MM-DD) [2025-01-01]: ") or "2025-01-01"
+        self.end_date = input("Enter end date (YYYY-MM-DD): ")
+        if not self.end_date:
+            raise ValueError("End date is required. Please provide a valid date in YYYY-MM-DD format.")
         
         # Model configurations
         self._setup_model_configurations()
@@ -99,7 +101,7 @@ class CFG:
         
         # Date range
         self.start_date = "1990-01-01"
-        self.end_date = "2025-01-01"
+        self.end_date = None  # Will be set by user input
         
         # Model configurations
         self._setup_model_configurations()
@@ -554,12 +556,12 @@ def createTrainTestTags(df, cfg):
     df = df.sort_values([cfg.rcode_col, cfg.date_col])
     
     # Get the last 12 months for each region
-    df['tag'] = 'train'
+    df['tag'] = 'Train'
     for region in df[cfg.rcode_col].unique():
         region_dates = df[df[cfg.rcode_col] == region][cfg.date_col].sort_values()
         if len(region_dates) > 12:
             test_dates = region_dates.iloc[-12:]
-            df.loc[df[cfg.date_col].isin(test_dates), 'tag'] = 'test'
+            df.loc[df[cfg.date_col].isin(test_dates), 'tag'] = 'Test'
     
     return df
 
@@ -610,8 +612,8 @@ def processRegionMSA(region, df_region, cfg, target_col='HPA1Yfwd'):
         if df_region.shape[0] < 24:
             logger.warning(f"Region {region} has insufficient data ({df_region.shape[0]} rows), skipping...")
             return None
-        train_df = df_region[df_region['tag'] == 'train'].copy()
-        test_df = df_region[df_region['tag'] == 'test'].copy()
+        train_df = df_region[df_region['tag'] == 'Train'].copy()
+        test_df = df_region[df_region['tag'] == 'Test'].copy()
         if len(train_df) < 12:
             logger.warning(f"Region {region} has insufficient training data ({len(train_df)} rows), skipping...")
             return None
@@ -776,8 +778,8 @@ def generateFinalOutput(merged_df, cfg):
     # Select only the required columns
     final_df = final_df[required_columns]
     
-    # Convert date to YYYY-MM-01 format
-    final_df[cfg.date_col] = pd.to_datetime(final_df[cfg.date_col]).dt.to_period('M').dt.start_time
+    # Convert date to YYYY-MM-DD format
+    final_df[cfg.date_col] = pd.to_datetime(final_df[cfg.date_col]).dt.strftime('%Y-%m-%d')
     
     # Sort by region and date
     final_df = final_df.sort_values([cfg.id_columns[0], cfg.date_col])
@@ -893,7 +895,7 @@ def run_with_custom_paths(
     msa_projection_col="ProjectedHPA1YFwd_MSABaseline",
     msa_new_columns=[],
     start_date="1990-01-01",
-    end_date="2025-01-01",
+    end_date=None,
     all_models_list=None,
     all_model_params=None,
     grid_specs=None,
@@ -904,6 +906,10 @@ def run_with_custom_paths(
     """
     global REGION_RESULTS
     logger.info("Running with custom paths and parameters...")
+
+    # Validate that end_date is provided
+    if end_date is None:
+        raise ValueError("end_date parameter is required. Please provide a valid date in YYYY-MM-DD format.")
 
     # Set up config
     class CustomCFG:
@@ -1002,7 +1008,9 @@ def main():
         print("="*70)
         
         # Step 1: Initialize configuration
-        cfg = CFG(get_user_input=False)
+        print("Note: This function requires user input for configuration.")
+        print("Please provide the end date when prompted.")
+        cfg = CFG(get_user_input=True)
         
         # Step 2: Load and merge data
         merged_df, unique_regions = loadAndMergeData(cfg)
@@ -1065,8 +1073,8 @@ def main():
             print(f"Output shape: {final_output.shape}")
             print(f"Date range: {final_output[cfg.date_col].min()} to {final_output[cfg.date_col].max()}")
             print(f"Unique MSAs: {final_output[cfg.id_columns[0]].nunique()}")
-            print(f"Train records: {(final_output['tag'] == 'train').sum()}")
-            print(f"Test records: {(final_output['tag'] == 'test').sum()}")
+            print(f"Train records: {(final_output['tag'] == 'Train').sum()}")
+            print(f"Test records: {(final_output['tag'] == 'Test').sum()}")
             
         else:
             print("❌ No MSA regions were successfully processed")
@@ -1083,72 +1091,141 @@ def main():
 if __name__ == "__main__":
     main()
 
-# --- TESTING CODE ---
-def test_pipeline_with_dummy_data():
-    """
-    Test the pipeline with small dummy CSV data to verify functionality.
-    """
-    import pandas as pd
-    print("Creating dummy test data...")
-    
-    n_rows = 30
-    # Create dummy MSA baseline data
-    msa_baseline = pd.DataFrame({
-        'rcode': ['A']*n_rows + ['B']*n_rows,
-        'cs_name': ['Alpha']*n_rows + ['Beta']*n_rows,
-        'Year_Month_Day': pd.date_range('2020-01-01', periods=n_rows, freq='MS').tolist()*2,
-        'HPI': list(range(100, 100+n_rows)) + list(range(200, 200+n_rows)),
-        'hpa12m': [1.0]*n_rows + [2.0]*n_rows,
-        'USA_HPI1Yfwd': list(range(1000, 1000+n_rows)) + list(range(2000, 2000+n_rows)),
-        'USA_HPA1Yfwd': [10.0]*n_rows + [20.0]*n_rows,
-        'HPA1Yfwd': [1.1]*(n_rows-2) + [None]*2 + [2.2]*(n_rows-2) + [None]*2,
-        'ProjectedHPA1YFwd_USABaseline': [5.0]*n_rows + [6.0]*n_rows,
-        'ProjectedHPA1YFwd_MSABaseline': [7.0]*n_rows + [8.0]*n_rows
-    })
-    msa_baseline.to_csv('MSA_Baseline_Results.csv', index=False)
-    print("✓ Created MSA_Baseline_Results.csv")
-
-    # Create dummy new MSA data
-    msa_new = pd.DataFrame({
-        'rcode': ['A']*n_rows + ['B']*n_rows,
-        'cs_name': ['Alpha']*n_rows + ['Beta']*n_rows,
-        'Year_Month_Day': pd.date_range('2020-01-01', periods=n_rows, freq='MS').tolist()*2,
-        'employment_rate': [0.1]*(2*n_rows),
-        'income_growth': [0.2]*(2*n_rows)
-    })
-    msa_new.to_csv('msa_data.csv', index=False)
-    print("✓ Created msa_data.csv")
-
-    # Run the pipeline
-    print("Running test pipeline...")
-    result = run_with_custom_paths(
-        msa_baseline_path='MSA_Baseline_Results.csv',
-        msa_new_data_path='msa_data.csv',
-        output_path='MSA_Calibration_Results.csv',
-        date_col='Year_Month_Day',
-        id_columns=['rcode', 'cs_name'],
-        msa_baseline_columns=[],  # No additional columns from baseline
-        target_column='HPA1Yfwd',
-        msa_hpi_col='HPI',
-        msa_hpa12m_col='hpa12m',
-        usa_hpi_col='USA_HPI',
-        usa_hpa12m_col='USA_HPA12M',
-        usa_hpi12mF_col='USA_HPI1Yfwd',
-        usa_hpa12mF_col='USA_HPA1Yfwd',
-        hpi1y_fwd_col='HPI1Y_fwd',
-        usa_projection_col='ProjectedHPA1YFwd_USABaseline',
-        msa_projection_col='ProjectedHPA1YFwd_MSABaseline',
-        msa_new_columns=['employment_rate', 'income_growth'],  # Use the actual new column names
-        start_date='2020-01-01',
-        end_date='2022-06-01'
-    )
-    
-    if result is not None:
-        print('✓ Test pipeline run complete. Output saved to MSA_Calibration_Results.csv')
-        print(f"✓ Output shape: {result.shape}")
-        print(f"✓ Output columns: {list(result.columns)}")
-    else:
-        print('❌ Test pipeline failed')
-
 # Uncomment the line below to run the test
 # test_pipeline_with_dummy_data()
+
+# def test_pipeline_with_dummy_data():
+#     """
+#     Test the pipeline with small dummy CSV data to verify functionality.
+#     """
+#     import pandas as pd
+#     print("Creating dummy test data...")
+#     
+#     n_rows = 30
+#     # Create dummy MSA baseline data
+#     msa_baseline = pd.DataFrame({
+#         'rcode': ['A']*n_rows + ['B']*n_rows,
+#         'cs_name': ['Alpha']*n_rows + ['Beta']*n_rows,
+#         'Year_Month_Day': pd.date_range('2020-01-01', periods=n_rows, freq='MS').tolist()*2,
+#         'HPI': list(range(100, 100+n_rows)) + list(range(200, 200+n_rows)),
+#         'hpa12m': [1.0]*n_rows + [2.0]*n_rows,
+#         'USA_HPI1Yfwd': list(range(1000, 1000+n_rows)) + list(range(2000, 2000+n_rows)),
+#         'USA_HPA1Yfwd': [10.0]*n_rows + [20.0]*n_rows,
+#         'HPA1Yfwd': [1.1]*(n_rows-2) + [None]*2 + [2.2]*(n_rows-2) + [None]*2,
+#         'ProjectedHPA1YFwd_USABaseline': [5.0]*n_rows + [6.0]*n_rows,
+#         'ProjectedHPA1YFwd_MSABaseline': [7.0]*n_rows + [8.0]*n_rows
+#     })
+#     msa_baseline.to_csv('MSA_Baseline_Results.csv', index=False)
+#     print("✓ Created MSA_Baseline_Results.csv")
+# 
+#     # Create dummy new MSA data
+#     msa_new = pd.DataFrame({
+#         'rcode': ['A']*n_rows + ['B']*n_rows,
+#         'cs_name': ['Alpha']*n_rows + ['Beta']*n_rows,
+#         'Year_Month_Day': pd.date_range('2020-01-01', periods=n_rows, freq='MS').tolist()*2,
+#         'employment_rate': [0.1]*(2*n_rows),
+#         'income_growth': [0.2]*(2*n_rows)
+#     })
+#     msa_new.to_csv('msa_data.csv', index=False)
+#     print("✓ Created msa_data.csv")
+# 
+#     # Run the pipeline
+#     print("Running test pipeline...")
+#     result = run_with_custom_paths(
+#         msa_baseline_path='MSA_Baseline_Results.csv',
+#         msa_new_data_path='msa_data.csv',
+#         output_path='MSA_Calibration_Results.csv',
+#         date_col='Year_Month_Day',
+#         id_columns=['rcode', 'cs_name'],
+#         msa_baseline_columns=[],  # No additional columns from baseline
+#         target_column='HPA1Yfwd',
+#         msa_hpi_col='HPI',
+#         msa_hpa12m_col='hpa12m',
+#         usa_hpi_col='USA_HPI',
+#         usa_hpa12m_col='USA_HPA12M',
+#         usa_hpi12mF_col='USA_HPI1Yfwd',
+#         usa_hpa12mF_col='USA_HPA1Yfwd',
+#         hpi1y_fwd_col='HPI1Y_fwd',
+#         usa_projection_col='ProjectedHPA1YFwd_USABaseline',
+#         msa_projection_col='ProjectedHPA1YFwd_MSABaseline',
+#         msa_new_columns=['employment_rate', 'income_growth'],  # Use the actual new column names
+#         start_date='2020-01-01',
+#         end_date='2022-06-01'
+#     )
+#     
+#     if result is not None:
+#         print('✓ Test pipeline run complete. Output saved to MSA_Calibration_Results.csv')
+#         print(f"✓ Output shape: {result.shape}")
+#         print(f"✓ Output columns: {list(result.columns)}")
+#     else:
+#         print('❌ Test pipeline failed')
+
+# Uncomment the line below to run the example
+# example_test_usage()
+
+'''
+# ============================================================================
+# EXAMPLE USAGE CODE - UNCOMMENT TO USE
+# ============================================================================
+
+# Example 1: Run with custom paths and parameters
+result = run_with_custom_paths(
+    msa_baseline_path='MSA_Baseline_Results.csv',
+    msa_new_data_path='msa_data.csv',
+    output_path='MSA_Calibration_Results.csv',
+    date_col='Year_Month_Day',
+    id_columns=['rcode', 'cs_name'],
+    msa_baseline_columns=[],  # No additional columns from baseline
+    target_column='HPA1Yfwd',
+    msa_hpi_col='HPI',
+    msa_hpa12m_col='hpa12m',
+    usa_hpi_col='USA_HPI',
+    usa_hpa12m_col='USA_HPA12M',
+    usa_hpi12mF_col='USA_HPI1Yfwd',
+    usa_hpa12mF_col='USA_HPA1Yfwd',
+    hpi1y_fwd_col='HPI1Y_fwd',
+    usa_projection_col='ProjectedHPA1YFwd_USABaseline',
+    msa_projection_col='ProjectedHPA1YFwd_MSABaseline',
+    msa_new_columns=['employment_rate', 'income_growth'],  # Use the actual new column names
+    start_date='2020-01-01',
+    end_date='2022-06-01'
+)
+
+# Example 2: Run test with specific rcodes
+test_rcodes = ['MSA_12345', 'MSA_23456', 'MSA_34567']
+
+result = run_test_with_rcodes(
+    rcodes_list=test_rcodes,
+    msa_baseline_path='MSA_Baseline_Results.csv',
+    msa_new_data_path='msa_data.csv',
+    output_path='testCalibration_Results.csv',
+    date_col='Year_Month_Day',
+    id_columns=['rcode', 'cs_name'],
+    msa_baseline_columns=[],  # No additional columns from baseline
+    target_column='HPA1Yfwd',
+    msa_hpi_col='HPI',
+    msa_hpa12m_col='hpa12m',
+    usa_hpi_col='USA_HPI',
+    usa_hpa12m_col='USA_HPA12M',
+    usa_hpi12mF_col='USA_HPI1Yfwd',
+    usa_hpa12mF_col='USA_HPA1Yfwd',
+    hpi1y_fwd_col='HPI1Y_fwd',
+    usa_projection_col='ProjectedHPA1YFwd_USABaseline',
+    msa_projection_col='ProjectedHPA1YFwd_MSABaseline',
+    msa_new_columns=['employment_rate', 'income_growth'],  # Use the actual new column names
+    start_date='2020-01-01',
+    end_date='2022-06-01'
+)
+
+# Example 3: Simple run with minimal parameters
+result = run_with_custom_paths(
+    msa_baseline_path='MSA_Baseline_Results.csv',
+    msa_new_data_path='msa_data.csv',
+    output_path='MSA_Calibration_Results.csv',
+    end_date='2022-06-01'
+)
+
+# ============================================================================
+# END EXAMPLE USAGE CODE
+# ============================================================================
+'''
