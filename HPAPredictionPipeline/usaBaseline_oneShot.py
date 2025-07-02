@@ -1412,6 +1412,60 @@ def predictTimeWindow(start_date, end_date, plot_results=True, save_plot=False, 
         print(f"❌ Error in time window prediction: {str(e)}")
         return None
 
+def createStandardizedOutput(df_filled, train_df, test_df, results, date_col, target_col, new_target_col):
+    """
+    Create standardized output CSV with only the required columns.
+    
+    Parameters:
+    - df_filled: Original filled dataframe
+    - train_df: Training dataframe
+    - test_df: Test dataframe
+    - results: Model results dictionary
+    - date_col: Date column name
+    - target_col: Original target column name
+    - new_target_col: Forward-looking target column name
+    
+    Returns:
+    - output_df: Standardized output dataframe with required columns
+    """
+    logger.info("Creating standardized output format...")
+    print("Creating standardized output format...")
+    
+    # Create output dataframe with date column
+    output_df = pd.DataFrame()
+    output_df['Year_Month_Day'] = df_filled[date_col].dt.strftime('%Y-%m-%d')
+    
+    # Add predictions column
+    output_df['ProjectedHPA1YFwd_USABaseline'] = np.nan
+    output_df.loc[train_df.index, 'ProjectedHPA1YFwd_USABaseline'] = results['train_predictions']
+    output_df.loc[test_df.index, 'ProjectedHPA1YFwd_USABaseline'] = results['test_predictions']
+    
+    # Add actual values columns (will be NaN for last 12 months)
+    if target_col and target_col in df_filled.columns:
+        # USA_HPA1Yfwd - actual values where available
+        output_df['USA_HPA1Yfwd'] = df_filled[target_col]
+        
+        # USA_HPI1Yfwd - forward-looking actual values where available
+        if new_target_col in df_filled.columns:
+            output_df['USA_HPI1Yfwd'] = df_filled[new_target_col]
+        else:
+            output_df['USA_HPI1Yfwd'] = np.nan
+    else:
+        # If no target column specified, create empty columns
+        output_df['USA_HPA1Yfwd'] = np.nan
+        output_df['USA_HPI1Yfwd'] = np.nan
+    
+    # Ensure the last 12 months have NaN values for actual columns
+    if len(output_df) >= 12:
+        last_12_months_mask = output_df.index >= (len(output_df) - 12)
+        output_df.loc[last_12_months_mask, 'USA_HPA1Yfwd'] = np.nan
+        output_df.loc[last_12_months_mask, 'USA_HPI1Yfwd'] = np.nan
+    
+    logger.info(f"Standardized output created with {len(output_df)} rows")
+    print(f"✓ Standardized output created with {len(output_df)} rows")
+    
+    return output_df
+
 # Main execution function
 def main():
     """
@@ -1487,15 +1541,23 @@ def main():
         # Step 11: Plot results
         plotResults(results, cfg.outputPath)
         
-        # Save final results
+        # Step 12: Create standardized output
+        output_df = createStandardizedOutput(df_filled, train_df, test_df, results, 
+                                           cfg.dateCol, cfg.targetCol, new_target_col)
+        
+        # Save standardized results
+        output_df.to_csv(cfg.outputPath, index=False)
+        logger.info(f"Standardized results saved to: {cfg.outputPath}")
+        print(f"✓ Standardized results saved to: {cfg.outputPath}")
+        
+        # Also save detailed results for debugging (optional)
+        detailed_output_path = cfg.outputPath.replace('.csv', '_detailed.csv')
         final_df = df_filled.copy()
         final_df['predictions'] = np.nan
         final_df.loc[train_df.index, 'predictions'] = results['train_predictions']
         final_df.loc[test_df.index, 'predictions'] = results['test_predictions']
-        
-        final_df.to_csv(cfg.outputPath, index=False)
-        logger.info(f"Results saved to: {cfg.outputPath}")
-        print(f"✓ Final results saved to: {cfg.outputPath}")
+        final_df.to_csv(detailed_output_path, index=False)
+        logger.info(f"Detailed results saved to: {detailed_output_path}")
         
         print("\n" + "="*50)
         print("USAGE INSTRUCTIONS")
@@ -1641,15 +1703,23 @@ def run_with_custom_paths(usa_file, output_file, end_date, config=None):
         # Step 11: Plot results
         plotResults(results, cfg.outputPath)
         
-        # Save final results
+        # Step 12: Create standardized output
+        output_df = createStandardizedOutput(df_filled, train_df, test_df, results, 
+                                           cfg.dateCol, cfg.targetCol, new_target_col)
+        
+        # Save standardized results
+        output_df.to_csv(cfg.outputPath, index=False)
+        logger.info(f"Standardized results saved to: {cfg.outputPath}")
+        print(f"✓ Standardized results saved to: {cfg.outputPath}")
+        
+        # Also save detailed results for debugging (optional)
+        detailed_output_path = cfg.outputPath.replace('.csv', '_detailed.csv')
         final_df = df_filled.copy()
         final_df['predictions'] = np.nan
         final_df.loc[train_df.index, 'predictions'] = results['train_predictions']
         final_df.loc[test_df.index, 'predictions'] = results['test_predictions']
-        
-        final_df.to_csv(cfg.outputPath, index=False)
-        logger.info(f"Results saved to: {cfg.outputPath}")
-        print(f"✓ Final results saved to: {cfg.outputPath}")
+        final_df.to_csv(detailed_output_path, index=False)
+        logger.info(f"Detailed results saved to: {detailed_output_path}")
         
         print("\n" + "="*60)
         print("PIPELINE EXECUTION COMPLETE!")
