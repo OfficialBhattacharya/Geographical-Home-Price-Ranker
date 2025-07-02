@@ -355,9 +355,33 @@ def fillMissingValues(df, new_target_col, idList, dateCol, fillMethod="DecayRate
     
     # Identify X variables (all columns except ID, date, and target)
     exclude_cols = idList + [dateCol, new_target_col]
-    x_columns = [col for col in df_filled.columns if col not in exclude_cols]
+    all_columns = [col for col in df_filled.columns if col not in exclude_cols]
+    
+    # Filter to only include numeric columns
+    x_columns = []
+    non_numeric_columns = []
+    
+    for col in all_columns:
+        try:
+            # Check if column is numeric
+            if pd.api.types.is_numeric_dtype(df_filled[col]):
+                x_columns.append(col)
+            else:
+                # Try to convert to numeric
+                numeric_col = pd.to_numeric(df_filled[col], errors='coerce')
+                if numeric_col.isna().sum() <= len(numeric_col) * 0.5:  # Less than 50% NaN
+                    df_filled[col] = numeric_col
+                    x_columns.append(col)
+                else:
+                    non_numeric_columns.append(col)
+        except Exception as e:
+            non_numeric_columns.append(col)
+            logger.warning(f"Column {col} could not be converted to numeric: {str(e)}")
     
     print(f"Number of X variables: {len(x_columns)}")
+    if non_numeric_columns:
+        print(f"Excluded non-numeric columns: {non_numeric_columns}")
+        logger.info(f"Excluded {len(non_numeric_columns)} non-numeric columns: {non_numeric_columns}")
     
     # Fill missing values in X variables using decay rate (exponential weighted mean)
     for col in x_columns:
@@ -423,6 +447,33 @@ def removeSkewnessAndKurtosis(train_df, test_df, x_columns, threshold=1):
     
     for col in x_columns:
         try:
+            # Check if column contains numeric data
+            if not pd.api.types.is_numeric_dtype(train_transformed[col]):
+                logger.warning(f"Column {col} is not numeric (dtype: {train_transformed[col].dtype}), skipping transformation")
+                transformers[col] = None
+                continue
+            
+            # Check for any non-numeric values that might have been missed
+            try:
+                # Try to convert to numeric, coercing errors to NaN
+                train_numeric = pd.to_numeric(train_transformed[col], errors='coerce')
+                test_numeric = pd.to_numeric(test_transformed[col], errors='coerce')
+                
+                # Check if we have enough valid numeric values
+                if train_numeric.isna().sum() > len(train_numeric) * 0.5:  # More than 50% NaN
+                    logger.warning(f"Column {col} has too many non-numeric values, skipping transformation")
+                    transformers[col] = None
+                    continue
+                
+                # Update the columns with cleaned numeric data
+                train_transformed[col] = train_numeric
+                test_transformed[col] = test_numeric
+                
+            except Exception as e:
+                logger.warning(f"Could not convert column {col} to numeric: {str(e)}")
+                transformers[col] = None
+                continue
+            
             # Calculate skewness
             skewness = abs(train_transformed[col].skew())
             
@@ -494,16 +545,28 @@ def standardizeData(train_df, test_df, x_columns, scaler_type="RobustScaler"):
     train_scaled = train_df.copy()
     test_scaled = test_df.copy()
     
-    # Fit scaler on training data and transform both
-    scaler.fit(train_scaled[x_columns])
+    # Ensure all columns are numeric before scaling
+    numeric_x_columns = []
+    for col in x_columns:
+        if pd.api.types.is_numeric_dtype(train_scaled[col]):
+            numeric_x_columns.append(col)
+        else:
+            logger.warning(f"Column {col} is not numeric, skipping standardization")
     
-    train_scaled[x_columns] = scaler.transform(train_scaled[x_columns])
-    test_scaled[x_columns] = scaler.transform(test_scaled[x_columns])
+    if not numeric_x_columns:
+        logger.error("No numeric columns found for standardization")
+        raise ValueError("No numeric columns found for standardization")
+    
+    # Fit scaler on training data and transform both
+    scaler.fit(train_scaled[numeric_x_columns])
+    
+    train_scaled[numeric_x_columns] = scaler.transform(train_scaled[numeric_x_columns])
+    test_scaled[numeric_x_columns] = scaler.transform(test_scaled[numeric_x_columns])
     
     logger.info("Data standardization complete")
     print("✓ Data standardization complete")
     
-    return train_scaled, test_scaled, scaler
+    return train_scaled, test_scaled, scaler, numeric_x_columns
 
 def checkAndRemoveHighVIF(train_df, test_df, x_columns, threshold=10, min_features=10, fallback_features=15):
     """
@@ -1400,10 +1463,10 @@ def main():
             train_df, test_df, x_columns)
         
         # Step 7: Standardize data
-        train_scaled, test_scaled, scaler = standardizeData(train_transformed, test_transformed, x_columns)
+        train_scaled, test_scaled, scaler, numeric_x_columns = standardizeData(train_transformed, test_transformed, x_columns)
         
         # Step 8: Remove high VIF features
-        train_clean, test_clean, final_features = checkAndRemoveHighVIF(train_scaled, test_scaled, x_columns)
+        train_clean, test_clean, final_features = checkAndRemoveHighVIF(train_scaled, test_scaled, numeric_x_columns)
         
         # Step 9: Setup CV scheme
         cv_scheme = timeseriesCV()
@@ -1554,10 +1617,10 @@ def run_with_custom_paths(usa_file, output_file, end_date, config=None):
             train_df, test_df, x_columns)
         
         # Step 7: Standardize data
-        train_scaled, test_scaled, scaler = standardizeData(train_transformed, test_transformed, x_columns)
+        train_scaled, test_scaled, scaler, numeric_x_columns = standardizeData(train_transformed, test_transformed, x_columns)
         
         # Step 8: Remove high VIF features
-        train_clean, test_clean, final_features = checkAndRemoveHighVIF(train_scaled, test_scaled, x_columns)
+        train_clean, test_clean, final_features = checkAndRemoveHighVIF(train_scaled, test_scaled, numeric_x_columns)
         
         # Step 9: Setup CV scheme
         cv_scheme = timeseriesCV()
