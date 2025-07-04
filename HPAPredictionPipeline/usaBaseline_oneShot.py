@@ -65,8 +65,12 @@ class CFG:
         feature_input = input("Enter feature columns (comma-separated) []: ")
         self.featureList = [f.strip() for f in feature_input.split(",")] if feature_input else []
         
-        target_input = input("Enter target column name []: ")
-        self.targetCol = target_input if target_input else ""
+        # Target and HPI configurations
+        target_input = input("Enter target column name [hpa12m]: ")
+        self.targetCol = target_input if target_input else "hpa12m"
+        
+        hpi_input = input("Enter HPI column name [HPI]: ")
+        self.hpiCol = hpi_input if hpi_input else "HPI"
         
         # ID columns
         id_input = input("Enter ID columns (comma-separated) []: ")
@@ -104,7 +108,8 @@ class CFG:
         self.start_date = "1990-01-01"
         self.end_date = None  # Must be provided by user
         self.featureList = []
-        self.targetCol = ""
+        self.targetCol = "hpa12m"
+        self.hpiCol = "HPI"
         self.lagList = [1,3,6,8,12,15,18,24,36,48,60]
         self.rateList = [1,2,3,4,5,6,7,8,9,10,11,12]
         self.movingAverages = [1,3,6,9,12,18,24]
@@ -301,21 +306,22 @@ def addAllFeatures(df, idList, dateCol, featureList, targetCol, lagList, movingA
     
     return df_enhanced
 
-def addTarget(df, idList, dateCol, targetCol, targetForward):
+def addTarget(df, idList, dateCol, targetCol, hpiCol, targetForward):
     """
-    Create forward-looking target variable.
+    Create forward-looking target variable and HPI forward variable.
     
     Parameters:
     - df: Input dataframe
     - idList: List of ID columns
     - dateCol: Date column name
     - targetCol: Original target column name
+    - hpiCol: HPI column name
     - targetForward: Number of months to forward
     
     Returns:
-    - df: Dataframe with new target column
+    - df: Dataframe with new target and HPI forward columns
     """
-    logger.info("Step 4: Adding target variable...")
+    logger.info("Step 4: Adding target and HPI forward variables...")
     print(f"Creating target variable with {targetForward} months forward look...")
     
     df_target = df.copy()
@@ -323,14 +329,20 @@ def addTarget(df, idList, dateCol, targetCol, targetForward):
     # Sort by date for proper forward calculation
     df_target = df_target.sort_values([dateCol])
     
-    # Create forward target
+    # Create forward target (12-month forward of hpa12m)
     new_target_col = f"{targetCol}_forward_{targetForward}m"
     df_target[new_target_col] = df_target.groupby(idList if idList else [True])[targetCol].shift(-targetForward)
     
-    logger.info(f"Target variable '{new_target_col}' created successfully")
-    print(f"✓ Target variable '{new_target_col}' created")
+    # Create forward HPI (12-month forward of HPI)
+    new_hpi_col = f"{hpiCol}_forward_{targetForward}m"
+    df_target[new_hpi_col] = df_target.groupby(idList if idList else [True])[hpiCol].shift(-targetForward)
     
-    return df_target, new_target_col
+    logger.info(f"Target variable '{new_target_col}' created successfully")
+    logger.info(f"HPI forward variable '{new_hpi_col}' created successfully")
+    print(f"✓ Target variable '{new_target_col}' created")
+    print(f"✓ HPI forward variable '{new_hpi_col}' created")
+    
+    return df_target, new_target_col, new_hpi_col
 
 def fillMissingValues(df, new_target_col, idList, dateCol, fillMethod="DecayRate"):
     """
@@ -1412,7 +1424,7 @@ def predictTimeWindow(start_date, end_date, plot_results=True, save_plot=False, 
         print(f"❌ Error in time window prediction: {str(e)}")
         return None
 
-def createStandardizedOutput(df_filled, train_df, test_df, results, date_col, target_col, new_target_col):
+def createStandardizedOutput(df_filled, train_df, test_df, results, date_col, target_col, hpi_col, new_target_col, new_hpi_col):
     """
     Create standardized output CSV with only the required columns.
     
@@ -1422,8 +1434,10 @@ def createStandardizedOutput(df_filled, train_df, test_df, results, date_col, ta
     - test_df: Test dataframe
     - results: Model results dictionary
     - date_col: Date column name
-    - target_col: Original target column name
+    - target_col: Original target column name (hpa12m)
+    - hpi_col: HPI column name
     - new_target_col: Forward-looking target column name
+    - new_hpi_col: Forward-looking HPI column name
     
     Returns:
     - output_df: Standardized output dataframe with required columns
@@ -1435,27 +1449,27 @@ def createStandardizedOutput(df_filled, train_df, test_df, results, date_col, ta
     output_df = pd.DataFrame()
     output_df['Year_Month_Day'] = df_filled[date_col].dt.strftime('%Y-%m-%d')
     
-    # Add predictions column
+    # Add predictions column - ProjectedHPA1YFwd_USABaseline (model predictions for 12-month forward hpa12m)
     output_df['ProjectedHPA1YFwd_USABaseline'] = np.nan
     output_df.loc[train_df.index, 'ProjectedHPA1YFwd_USABaseline'] = results['train_predictions']
     output_df.loc[test_df.index, 'ProjectedHPA1YFwd_USABaseline'] = results['test_predictions']
     
-    # Add actual values columns (will be NaN for last 12 months)
+    # Add actual values columns
     if target_col and target_col in df_filled.columns:
-        # USA_HPA1Yfwd - actual values where available
+        # USA_HPA1Yfwd - actual hpa12m values where available (NaN for last 12 months by design)
         output_df['USA_HPA1Yfwd'] = df_filled[target_col]
-        
-        # USA_HPI1Yfwd - forward-looking actual values where available
-        if new_target_col in df_filled.columns:
-            output_df['USA_HPI1Yfwd'] = df_filled[new_target_col]
-        else:
-            output_df['USA_HPI1Yfwd'] = np.nan
     else:
-        # If no target column specified, create empty columns
+        # If no target column specified, create empty column
         output_df['USA_HPA1Yfwd'] = np.nan
+    
+    # USA_HPI1Yfwd - 12-month forward HPI values where available (NaN for last 12 months by design)
+    if hpi_col and hpi_col in df_filled.columns and new_hpi_col in df_filled.columns:
+        output_df['USA_HPI1Yfwd'] = df_filled[new_hpi_col]
+    else:
+        # If no HPI column specified, create empty column
         output_df['USA_HPI1Yfwd'] = np.nan
     
-    # Ensure the last 12 months have NaN values for actual columns
+    # Ensure the last 12 months have NaN values for actual columns (by design)
     if len(output_df) >= 12:
         last_12_months_mask = output_df.index >= (len(output_df) - 12)
         output_df.loc[last_12_months_mask, 'USA_HPA1Yfwd'] = np.nan
@@ -1505,8 +1519,8 @@ def main():
                                    cfg.targetCol, cfg.lagList, cfg.movingAverages, cfg.rateList)
         
         # Step 4: Add target
-        df_target, new_target_col = addTarget(df_features, cfg.idList, cfg.dateCol, 
-                                            cfg.targetCol, cfg.targetForward)
+        df_target, new_target_col, new_hpi_col = addTarget(df_features, cfg.idList, cfg.dateCol, 
+                                            cfg.targetCol, cfg.hpiCol, cfg.targetForward)
         
         # Step 5: Fill missing values and create train/test split
         df_filled, train_df, test_df, x_columns = fillMissingValues(df_target, new_target_col, 
@@ -1543,7 +1557,7 @@ def main():
         
         # Step 12: Create standardized output
         output_df = createStandardizedOutput(df_filled, train_df, test_df, results, 
-                                           cfg.dateCol, cfg.targetCol, new_target_col)
+                                           cfg.dateCol, cfg.targetCol, cfg.hpiCol, new_target_col, new_hpi_col)
         
         # Save standardized results
         output_df.to_csv(cfg.outputPath, index=False)
@@ -1620,7 +1634,8 @@ def run_with_custom_paths(usa_file, output_file, end_date, config=None):
                 self.start_date = "1990-01-01"
                 self.end_date = end_date
                 self.featureList = []
-                self.targetCol = ""
+                self.targetCol = "hpa12m"
+                self.hpiCol = "HPI"
                 self.lagList = [1,3,6,8,12,15,18,24,36,48,60]
                 self.rateList = [1,2,3,4,5,6,7,8,9,10,11,12]
                 self.movingAverages = [1,3,6,9,12,18,24]
@@ -1667,8 +1682,8 @@ def run_with_custom_paths(usa_file, output_file, end_date, config=None):
                                    cfg.targetCol, cfg.lagList, cfg.movingAverages, cfg.rateList)
         
         # Step 4: Add target
-        df_target, new_target_col = addTarget(df_features, cfg.idList, cfg.dateCol, 
-                                            cfg.targetCol, cfg.targetForward)
+        df_target, new_target_col, new_hpi_col = addTarget(df_features, cfg.idList, cfg.dateCol, 
+                                            cfg.targetCol, cfg.hpiCol, cfg.targetForward)
         
         # Step 5: Fill missing values and create train/test split
         df_filled, train_df, test_df, x_columns = fillMissingValues(df_target, new_target_col, 
@@ -1705,7 +1720,7 @@ def run_with_custom_paths(usa_file, output_file, end_date, config=None):
         
         # Step 12: Create standardized output
         output_df = createStandardizedOutput(df_filled, train_df, test_df, results, 
-                                           cfg.dateCol, cfg.targetCol, new_target_col)
+                                           cfg.dateCol, cfg.targetCol, cfg.hpiCol, new_target_col, new_hpi_col)
         
         # Save standardized results
         output_df.to_csv(cfg.outputPath, index=False)
@@ -1749,7 +1764,8 @@ def run_with_custom_paths(usa_file, output_file, end_date, config=None):
 #     'start_date': '2010-01-01',
 #     'end_date': '2024-12-31',
 #     'featureList': ['unemployment_rate', 'interest_rate', 'gdp_growth', 'inflation_rate'],
-#     'targetCol': 'home_price',
+#     'targetCol': 'hpa12m',
+#     'hpiCol': 'HPI',
 #     'lagList': [1, 3, 6, 12, 24],
 #     'rateList': [1, 3, 6, 12],
 #     'movingAverages': [3, 6, 12],
@@ -1776,7 +1792,8 @@ def run_with_custom_paths(usa_file, output_file, end_date, config=None):
 #     'start_date': '2020-01-01',
 #     'end_date': '2024-12-31',
 #     'featureList': ['unemployment_rate', 'interest_rate'],
-#     'targetCol': 'home_price',
+#     'targetCol': 'hpa12m',
+#     'hpiCol': 'HPI',
 #     'AllModelsList': ['LinearRegression', 'RandomForest']
 # }
 # 
@@ -1802,7 +1819,8 @@ custom_config = {
     'start_date': '2010-01-01',
     'end_date': '2024-12-31',
     'featureList': ['unemployment_rate', 'interest_rate', 'gdp_growth', 'inflation_rate'],
-    'targetCol': 'home_price',
+    'targetCol': 'hpa12m',
+    'hpiCol': 'HPI',
     'lagList': [1, 3, 6, 12, 24],
     'rateList': [1, 3, 6, 12],
     'movingAverages': [3, 6, 12],
@@ -1826,7 +1844,8 @@ minimal_config = {
     'start_date': '2020-01-01',
     'end_date': '2024-12-31',
     'featureList': ['unemployment_rate', 'interest_rate'],
-    'targetCol': 'home_price',
+    'targetCol': 'hpa12m',
+    'hpiCol': 'HPI',
     'AllModelsList': ['LinearRegression', 'RandomForest']
 }
 
