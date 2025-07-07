@@ -32,6 +32,11 @@ def run_pipeline():
                 "name": "Cleaning and interpolating", 
                 "command": ["python", "fredCleaner.py"],
                 "description": "Fills missing values and extends dataset to end date"
+            },
+            {
+                "name": "State-level data enhancement", 
+                "command": ["python", "stateDataEnhancer.py"],
+                "description": "Fetches and processes state-level economic indicators"
             }
         ]
         

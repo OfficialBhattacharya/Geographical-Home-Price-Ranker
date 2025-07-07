@@ -2,7 +2,7 @@
 
 # API Configuration
 api:
-  fred_api_key: "YOUR_FRED_API_KEY_HERE"  # Replace with your actual FRED API key
+  fred_api_key: "5c55eb55fdf36bf1e87281c45af17e1e"  # Your FRED API key
 
 # Directory Paths
 paths:

@@ -1,0 +1,37 @@
+# FRED State-Level Data Series Mappings
+# Replace [ST] with state abbreviation (e.g., CA, TX)
+# National-to-State pattern mapping
+
+AverageSalesPrice_NewHousesSold: ASPNHS[ST]
+NewOneFamilyHousesSold: HSN1F[ST]
+MedianSalesPriceofHousesSold: MEDSP[ST]
+HomeownershipRate: EQV[ST]RATEM
+UnemploymentRate: ST[ST]URN
+HomePriceIndex: [ST]STHPI
+OccupiedHousingUnits: EOCC[ST]Q176N
+VacantHousingUnits_1: EQVAC[ST]  # Total vacant units
+VacantforOtherReasons: EQVOM[ST]
+RenterOccupiedHousingUnits: EQVRENT[ST]
+VacantHousingUnits_NotYetOccupied: EQVSLD[ST]
+VacantHousingUnits_forSale: EQVFS[ST]
+TotalHousingUnits: ETOTAL[ST]Q176N
+MedianDaysonMarket: MEDDAYONMAR[ST]
+MedianListingPriceperSquareFeet: MEDLISPRIPERSQUFEE[ST]
+
+# Proxy series (no direct equivalent)
+TotalShipmentsofNewHomes: [ST]BPPRIVSA  # Building permits proxy
+
+# Unavailable at state level
+AverageSalesPrice: NO_STATE_EQUIV
+MonthlySupplyofNewHouses: NO_STATE_EQUIV
+EconomicPolicyUncertaintyIndex: NO_STATE_EQUIV
+
+# State Abbreviations (51)
+AL,AK,AZ,AR,CA,CO,CT,DE,FL,GA,HI,ID,IL,IN,IA,KS,KY,LA,ME,MD,MA,MI,MN,MS,MO,MT,NE,NV,NH,NJ,NM,NY,NC,ND,OH,OK,OR,PA,RI,SC,SD,TN,TX,UT,VT,VA,WA,WV,WI,WY,DC
+
+# Usage Notes:
+1. All patterns are case-sensitive
+2. Vacancy data is quarterly, others mostly monthly
+3. HPI uses FHFA methodology (not Case-Shiller)
+4. Realtor.com series (MEDDAYONMAR*, MEDLISPRIPERSQUFEE*) have limited state coverage
+5. Building permits ([ST]BPPRIVSA) are a proxy for new home shipments 

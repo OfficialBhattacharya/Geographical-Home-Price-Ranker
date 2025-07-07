@@ -159,6 +159,21 @@ pip install -r requirements.txt
 python run_pipeline.py
 ```
 
+**Enhanced Pipeline**: The pipeline now includes state-level data enhancement:
+- **National Data**: Traditional FRED series (unemployment, HPI, etc.)
+- **State-Level Data**: 51 states with 15+ economic indicators each
+- **Integration**: Combined national and state-level datasets
+
+For state-level data only:
+```bash
+python batch_state_scraper.py
+```
+
+For testing the state-level enhancement:
+```bash
+python test_state_enhancement.py
+```
+
 ### Step 2: USA Baseline Projection
 
 ```bash
@@ -195,6 +210,8 @@ python msaCalibration_oneShot.py
 
 ## 📊 Output Format
 
+### Main Pipeline Output
+
 The final output contains the following key columns:
 
 | Column | Description | Mathematical Definition |
@@ -211,7 +228,60 @@ The final output contains the following key columns:
 | `HPA1Yfwd` | 1-year forward HPA (target) | $\text{HPA}_{t,t+12}$ |
 | `HPI1Y_fwd` | 1-year forward HPI | $\text{HPI}_{t+12}$ |
 
+### State-Level Data Output
+
+The state-level enhancement produces additional datasets:
+
+**State-Level Data** (`state_level_data.csv`):
+```csv
+Date,State,SeriesID,Value,Frequency,Source,ProxyFor
+2023-01-01,CA,CASTHPI,350.2,monthly,FRED,
+2023-01-01,CA,STCAURN,4.1,monthly,FRED,
+2023-01-01,CA,CABPPRIVSA,1250,monthly,FRED,TotalShipmentsofNewHomes
+```
+
+**Integrated Dataset** (`integrated_state_national_data.csv`):
+```csv
+Date,Region,State,SeriesID,Value,Frequency,Source,ProxyFor
+2023-01-01,United States,CA,CASTHPI,350.2,monthly,FRED,
+2023-01-01,United States,TX,TXSTHPI,280.5,monthly,FRED,
+2023-01-01,United States,NY,NYSTHPI,420.1,monthly,FRED,
+```
+
+**Metadata** (`state_data_metadata.json`):
+```json
+{
+  "coverage_percentage": {"CA": 95.2, "TX": 92.8},
+  "successful_series": {"CA": ["UnemploymentRate", "HomePriceIndex"]},
+  "failed_series": {"CA": ["MedianDaysonMarket"]},
+  "processing_timestamp": "2024-01-01T12:00:00"
+}
+```
+
 ## 🔧 Configuration
+
+### State-Level Data Enhancement
+
+The pipeline now includes comprehensive state-level data enhancement with the following features:
+
+**Coverage**: 51 states/territories with 15+ economic indicators each
+**Series Types**: 
+- Monthly indicators (unemployment, HPI, home sales)
+- Quarterly indicators (housing units, vacancy rates)
+- Proxy series (building permits for new home shipments)
+
+**Special Handling**:
+- Realtor.com series with 60% coverage threshold
+- Quarterly data interpolation (except vacancy metrics)
+- Automatic seasonal adjustment for proxy series
+- Comprehensive metadata tracking
+
+**Files Required**:
+- `state_level_fred_mappings.txt`: Series ID patterns for each state
+- `stateDataEnhancer.py`: Main processing engine
+- `batch_state_scraper.py`: Automated processing pipeline
+
+For detailed documentation, see `STATE_LEVEL_README.md`.
 
 ### Data Requirements
 
