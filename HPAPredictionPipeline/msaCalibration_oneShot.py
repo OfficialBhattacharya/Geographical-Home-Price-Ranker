@@ -587,7 +587,7 @@ def addAllFeatures(df, cfg):
 
     return df_enhanced
 
-def processRegionMSA(region, df_region, cfg, target_col='HPA1Yfwd'):
+def processRegionMSA(region, df_region, cfg, target_col='HPA1Yfwd', usable_columns=None):
     """
     Process a single MSA region through the modeling pipeline.
     
@@ -596,6 +596,7 @@ def processRegionMSA(region, df_region, cfg, target_col='HPA1Yfwd'):
     - df_region: Data for specific MSA region
     - cfg: Configuration object
     - target_col: Target column name
+    - usable_columns: Pre-identified usable columns for modeling
     
     Returns:
     - region_results: Dictionary containing all results for the region
@@ -611,6 +612,8 @@ def processRegionMSA(region, df_region, cfg, target_col='HPA1Yfwd'):
             logger.warning(f"Region {region} has insufficient data ({df_region.shape[0]} rows), skipping...")
             print(f"❌ Region {region}: insufficient data ({df_region.shape[0]} rows < 24)")
             return None
+        
+        # Split train/test
         train_df = df_region[df_region['tag'] == 'Train'].copy()
         test_df = df_region[df_region['tag'] == 'Test'].copy()
         print(f"🔍 DEBUG: Train data shape: {train_df.shape}")
@@ -621,15 +624,8 @@ def processRegionMSA(region, df_region, cfg, target_col='HPA1Yfwd'):
             logger.warning(f"Region {region} has insufficient training data ({len(train_df)} rows), skipping...")
             print(f"❌ Region {region}: insufficient training data ({len(train_df)} rows < 12)")
             return None
-        exclude_cols = [cfg.date_col, cfg.rcode_col, cfg.cs_name_col, 'tag', target_col, 
-                       'HPA1Yfwd', 'HPI1Y_fwd', cfg.hpa12m_col + '_baseline', cfg.hpi_col + '_baseline',
-                       cfg.hpa12m_col + '_new', cfg.hpi_col + '_new']
-        print(f"🔍 DEBUG: Exclude columns: {exclude_cols}")
         
-        x_columns = [col for col in train_df.columns if col not in exclude_cols and not train_df[col].isnull().all()]
-        print(f"🔍 DEBUG: Feature columns identified: {x_columns}")
-        print(f"🔍 DEBUG: Number of features: {len(x_columns)}")
-        
+        # Check target column availability
         if target_col not in train_df.columns or train_df[target_col].isnull().all():
             logger.warning(f"Region {region} has no valid target values, skipping...")
             print(f"❌ Region {region}: no valid target values in column '{target_col}'")
@@ -637,26 +633,70 @@ def processRegionMSA(region, df_region, cfg, target_col='HPA1Yfwd'):
             if target_col in train_df.columns:
                 print(f"🔍 DEBUG: Target column null count: {train_df[target_col].isnull().sum()}/{len(train_df)}")
             return None
+        
+        # Remove rows with missing target values
         train_df = train_df.dropna(subset=[target_col])
         print(f"🔍 DEBUG: Train data shape after dropping target NaNs: {train_df.shape}")
         
-        # Drop rows with NA in X variables for both train and test
-        train_df_before_x_dropna = train_df.copy()
-        train_df = train_df.dropna(subset=x_columns)
-        test_df = test_df.dropna(subset=x_columns)
-        print(f"🔍 DEBUG: Train data shape after dropping feature NaNs: {train_df.shape}")
-        print(f"🔍 DEBUG: Test data shape after dropping feature NaNs: {test_df.shape}")
+        # Use pre-identified usable columns or identify them for this region
+        if usable_columns is not None:
+            # Filter to only include columns that exist in this region's data
+            x_columns = [col for col in usable_columns if col in train_df.columns]
+            print(f"🔍 DEBUG: Using pre-identified usable columns: {len(usable_columns)} total, {len(x_columns)} available")
+        else:
+            # Fallback to old method but with better filtering
+            exclude_cols = [cfg.date_col, cfg.rcode_col, cfg.cs_name_col, 'tag', target_col, 
+                           'HPA1Yfwd', 'HPI1Y_fwd', cfg.hpa12m_col + '_baseline', cfg.hpi_col + '_baseline',
+                           cfg.hpa12m_col + '_new', cfg.hpi_col + '_new']
+            x_columns = [col for col in train_df.columns if col not in exclude_cols and not train_df[col].isnull().all()]
         
-        # Debug missing data in features
-        if len(train_df) == 0:
-            print(f"🔍 DEBUG: All training data was removed by feature NaN filtering!")
-            for col in x_columns:
-                missing_count = train_df_before_x_dropna[col].isnull().sum()
-                print(f"🔍 DEBUG: Feature '{col}' missing count: {missing_count}/{len(train_df_before_x_dropna)}")
+        print(f"🔍 DEBUG: Feature columns identified: {x_columns}")
+        print(f"🔍 DEBUG: Number of features: {len(x_columns)}")
+        
+        # Further filter columns for this specific region based on missing data
+        region_usable_columns = []
+        for col in x_columns:
+            train_missing_pct = train_df[col].isnull().sum() / len(train_df)
+            test_missing_pct = test_df[col].isnull().sum() / len(test_df) if len(test_df) > 0 else 0
+            
+            if train_missing_pct <= 0.1 and test_missing_pct <= 0.1:  # Allow up to 10% missing for region-specific analysis
+                region_usable_columns.append(col)
+            else:
+                print(f"🔍 DEBUG: Dropping column '{col}' for region {region}: train_missing={train_missing_pct*100:.1f}%, test_missing={test_missing_pct*100:.1f}%")
+        
+        x_columns = region_usable_columns
+        print(f"🔍 DEBUG: Final usable features for region: {len(x_columns)}")
+        
+        if len(x_columns) < 3:
+            logger.warning(f"Region {region} has too few usable features ({len(x_columns)}), skipping...")
+            print(f"❌ Region {region}: too few usable features ({len(x_columns)} < 3)")
+            return None
+        
+        # Fill any remaining NaN values in selected columns with interpolation/mean for this region
+        for col in x_columns:
+            if train_df[col].isnull().any():
+                train_df[col] = train_df[col].interpolate().fillna(train_df[col].mean())
+            if len(test_df) > 0 and test_df[col].isnull().any():
+                test_df[col] = test_df[col].interpolate().fillna(train_df[col].mean())  # Use training mean for test
+        
+        # Final check for missing data
+        train_missing_final = train_df[x_columns].isnull().sum().sum()
+        test_missing_final = test_df[x_columns].isnull().sum().sum() if len(test_df) > 0 else 0
+        
+        if train_missing_final > 0 or test_missing_final > 0:
+            logger.warning(f"Region {region} still has missing data after cleanup: train={train_missing_final}, test={test_missing_final}")
+            print(f"⚠️  Region {region}: remaining missing data: train={train_missing_final}, test={test_missing_final}")
+            # Fill any remaining NaN with 0 as last resort
+            train_df[x_columns] = train_df[x_columns].fillna(0)
+            if len(test_df) > 0:
+                test_df[x_columns] = test_df[x_columns].fillna(0)
+        
+        print(f"🔍 DEBUG: Final train data shape: {train_df.shape}")
+        print(f"🔍 DEBUG: Final test data shape: {test_df.shape}")
         
         if len(train_df) < 12:
-            logger.warning(f"Region {region} has insufficient training data after removing NaN targets or features, skipping...")
-            print(f"❌ Region {region}: insufficient training data after NaN removal ({len(train_df)} rows < 12)")
+            logger.warning(f"Region {region} has insufficient training data after cleanup ({len(train_df)} rows), skipping...")
+            print(f"❌ Region {region}: insufficient training data after cleanup ({len(train_df)} rows < 12)")
             return None
         X_train = train_df[x_columns]
         y_train = train_df[target_col]
@@ -818,10 +858,10 @@ def generateFinalOutput(merged_df, cfg):
     final_df = final_df[required_columns]
     
     # Convert date to YYYY-MM-DD format
-    final_df[cfg.date_col] = pd.to_datetime(final_df[cfg.date_col]).dt.strftime('%Y-%m-%d')
+    final_df['Year_Month_Day'] = pd.to_datetime(final_df['Year_Month_Day']).dt.strftime('%Y-%m-%d')
     
     # Sort by region and date
-    final_df = final_df.sort_values([cfg.id_columns[0], cfg.date_col])
+    final_df = final_df.sort_values(['rcode', 'Year_Month_Day'])
     
     return final_df
 
@@ -829,10 +869,22 @@ def fillMissingDataByRegion(df, cfg):
     logger.info("Filling missing data by region...")
     print("Filling missing data using growth/decay rates and monthly averages...")
     df_filled = df.copy()
-    exclude_cols = [cfg.date_col, cfg.rcode_col, cfg.cs_name_col]
-    user_numeric_cols = [col for col in [cfg.msa_hpi_col, cfg.msa_hpa12m_col, cfg.usa_hpi12mF_col, cfg.usa_hpa12mF_col, cfg.usa_projection_col, cfg.msa_projection_col] + cfg.msa_new_columns if col in df_filled.columns and pd.api.types.is_numeric_dtype(df_filled[col])]
-    numeric_cols = [col for col in user_numeric_cols if col not in exclude_cols]
+    exclude_cols = [cfg.date_col, cfg.rcode_col, cfg.cs_name_col, 'tag']
+    
+    # Get ALL numeric columns, not just specified ones
+    all_numeric_cols = [col for col in df_filled.columns 
+                       if col not in exclude_cols 
+                       and pd.api.types.is_numeric_dtype(df_filled[col])
+                       and col != cfg.target_column]  # Don't impute target column
+    
+    # Prioritize user-specified columns but include all numeric columns
+    user_specified_cols = [col for col in [cfg.msa_hpi_col, cfg.msa_hpa12m_col, cfg.usa_hpi12mF_col, cfg.usa_hpa12mF_col, cfg.usa_projection_col, cfg.msa_projection_col] + cfg.msa_new_columns if col in df_filled.columns]
+    numeric_cols = list(set(user_specified_cols + all_numeric_cols))
+    
     print(f"Processing {len(numeric_cols)} numeric columns for missing data...")
+    print(f"User-specified columns: {len(user_specified_cols)}")
+    print(f"Additional numeric columns found: {len(all_numeric_cols) - len([col for col in user_specified_cols if col in all_numeric_cols])}")
+    
     df_filled = df_filled.sort_values([cfg.rcode_col, cfg.date_col])
     unique_regions = df_filled[cfg.rcode_col].unique()
     unique_regions = [r for r in unique_regions if pd.notna(r)]
@@ -914,6 +966,54 @@ def fillMissingDataByRegion(df, cfg):
     print(f"✓ {regions_with_missing} regions had missing data")
     print(f"✓ Final missing values in numeric columns: {final_missing}")
     return df_filled
+
+def identifyUsableColumns(df, cfg, missing_threshold=0.05):
+    """
+    Identify columns that are usable for modeling by checking missing data percentage.
+    
+    Parameters:
+    - df: Input dataframe
+    - cfg: Configuration object
+    - missing_threshold: Maximum percentage of missing data allowed (default 5%)
+    
+    Returns:
+    - usable_columns: List of column names that are usable for modeling
+    - dropped_columns: List of column names that were dropped due to excessive missing data
+    """
+    logger.info(f"Identifying usable columns with missing threshold: {missing_threshold*100}%")
+    
+    exclude_cols = [cfg.date_col, cfg.rcode_col, cfg.cs_name_col, 'tag', cfg.target_column]
+    
+    # Get all potential feature columns
+    potential_feature_cols = [col for col in df.columns 
+                             if col not in exclude_cols 
+                             and pd.api.types.is_numeric_dtype(df[col])]
+    
+    usable_columns = []
+    dropped_columns = []
+    
+    for col in potential_feature_cols:
+        missing_percentage = df[col].isnull().sum() / len(df)
+        
+        if missing_percentage <= missing_threshold:
+            usable_columns.append(col)
+        else:
+            dropped_columns.append(col)
+            logger.warning(f"Dropping column '{col}' due to {missing_percentage*100:.1f}% missing data")
+    
+    print(f"\n📊 COLUMN USABILITY ANALYSIS:")
+    print(f"✓ Usable columns: {len(usable_columns)}")
+    print(f"❌ Dropped columns: {len(dropped_columns)}")
+    
+    if dropped_columns:
+        print(f"\nDropped columns due to excessive missing data (>{missing_threshold*100}%):")
+        for col in dropped_columns:
+            missing_pct = df[col].isnull().sum() / len(df) * 100
+            print(f"  - {col}: {missing_pct:.1f}% missing")
+    
+    print(f"\nUsable columns for modeling: {usable_columns}")
+    
+    return usable_columns, dropped_columns
 
 def run_with_custom_paths(
     msa_baseline_path,
@@ -1008,14 +1108,19 @@ def run_with_custom_paths(
     merged_df = createForwardLookingVariables(merged_df, cfg)
     
     merged_df = createTrainTestTags(merged_df, cfg)
-    # merged_df = addAllFeatures(merged_df, cfg)  # Removed as per user request
-
+    
+    # Identify usable columns after data preprocessing
+    usable_columns, dropped_columns = identifyUsableColumns(merged_df, cfg, missing_threshold=0.05)
+    
+    # Log the column analysis
+    logger.info(f"Column analysis complete: {len(usable_columns)} usable, {len(dropped_columns)} dropped")
+    
     processed_count = 0
     skipped_count = 0
     REGION_RESULTS = {}
     for i, region in enumerate(unique_regions, 1):
         region_df = merged_df[merged_df[cfg.id_columns[0]] == region].copy()
-        region_results = processRegionMSA(region, region_df, cfg, target_col=cfg.target_column)
+        region_results = processRegionMSA(region, region_df, cfg, target_col=cfg.target_column, usable_columns=usable_columns)
         REGION_RESULTS[region] = region_results
         if region_results is not None:
             processed_count += 1
@@ -1205,6 +1310,12 @@ def run_test_with_rcodes(
     merged_df = createForwardLookingVariables(merged_df, cfg)
     
     merged_df = createTrainTestTags(merged_df, cfg)
+    
+    # Identify usable columns after data preprocessing
+    usable_columns, dropped_columns = identifyUsableColumns(merged_df, cfg, missing_threshold=0.05)
+    
+    # Log the column analysis
+    logger.info(f"Column analysis complete: {len(usable_columns)} usable, {len(dropped_columns)} dropped")
 
     processed_count = 0
     skipped_count = 0
@@ -1215,7 +1326,7 @@ def run_test_with_rcodes(
     for i, region in enumerate(unique_regions, 1):
         print(f"\n[{i}/{len(unique_regions)}] Processing MSA region: {region}")
         region_df = merged_df[merged_df[cfg.id_columns[0]] == region].copy()
-        region_results = processRegionMSA(region, region_df, cfg, target_col=cfg.target_column)
+        region_results = processRegionMSA(region, region_df, cfg, target_col=cfg.target_column, usable_columns=usable_columns)
         REGION_RESULTS[region] = region_results
         if region_results is not None:
             processed_count += 1
@@ -1273,8 +1384,11 @@ def main():
         # Step 4: Create train/test tags
         merged_df = createTrainTestTags(merged_df, cfg)
         
-        # Step 5: Add engineered features
-        # merged_df = addAllFeatures(merged_df, cfg)  # Removed as per user request
+        # Step 5: Identify usable columns after data preprocessing
+        usable_columns, dropped_columns = identifyUsableColumns(merged_df, cfg, missing_threshold=0.05)
+        
+        # Log the column analysis
+        logger.info(f"Column analysis complete: {len(usable_columns)} usable, {len(dropped_columns)} dropped")
         
         print(f"\nProcessing {len(unique_regions)} MSA regions...")
         
@@ -1289,7 +1403,7 @@ def main():
             region_df = merged_df[merged_df[cfg.id_columns[0]] == region].copy()
             
             # Process the region
-            region_results = processRegionMSA(region, region_df, cfg, target_col=cfg.target_column)
+            region_results = processRegionMSA(region, region_df, cfg, target_col=cfg.target_column, usable_columns=usable_columns)
             
             # Store results
             REGION_RESULTS[region] = region_results
