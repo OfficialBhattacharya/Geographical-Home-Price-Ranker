@@ -793,6 +793,7 @@ def generateFinalOutput(merged_df, cfg):
         'HPA1Yfwd',
         'HPI1Yfwd',
         'USA_HPI1Yfwd',
+        'USA_HPA1Yfwd',
         'Approach3_MSA_HPA1YrFwd'
     ]
     
