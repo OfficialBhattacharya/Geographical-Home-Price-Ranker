@@ -601,37 +601,78 @@ def processRegionMSA(region, df_region, cfg, target_col='HPA1Yfwd'):
     - region_results: Dictionary containing all results for the region
     """
     logger.info(f"Processing MSA region: {region}")
+    print(f"\n🔍 DEBUG: Processing region {region}")
+    print(f"🔍 DEBUG: Initial data shape: {df_region.shape}")
+    print(f"🔍 DEBUG: Available columns: {list(df_region.columns)}")
+    print(f"🔍 DEBUG: Target column: {target_col}")
     
     try:
         if df_region.shape[0] < 24:
             logger.warning(f"Region {region} has insufficient data ({df_region.shape[0]} rows), skipping...")
+            print(f"❌ Region {region}: insufficient data ({df_region.shape[0]} rows < 24)")
             return None
         train_df = df_region[df_region['tag'] == 'Train'].copy()
         test_df = df_region[df_region['tag'] == 'Test'].copy()
+        print(f"🔍 DEBUG: Train data shape: {train_df.shape}")
+        print(f"🔍 DEBUG: Test data shape: {test_df.shape}")
+        print(f"🔍 DEBUG: Unique tags in data: {df_region['tag'].value_counts().to_dict()}")
+        
         if len(train_df) < 12:
             logger.warning(f"Region {region} has insufficient training data ({len(train_df)} rows), skipping...")
+            print(f"❌ Region {region}: insufficient training data ({len(train_df)} rows < 12)")
             return None
         exclude_cols = [cfg.date_col, cfg.rcode_col, cfg.cs_name_col, 'tag', target_col, 
                        'HPA1Yfwd', 'HPI1Y_fwd', cfg.hpa12m_col + '_baseline', cfg.hpi_col + '_baseline',
                        cfg.hpa12m_col + '_new', cfg.hpi_col + '_new']
+        print(f"🔍 DEBUG: Exclude columns: {exclude_cols}")
+        
         x_columns = [col for col in train_df.columns if col not in exclude_cols and not train_df[col].isnull().all()]
+        print(f"🔍 DEBUG: Feature columns identified: {x_columns}")
+        print(f"🔍 DEBUG: Number of features: {len(x_columns)}")
+        
         if target_col not in train_df.columns or train_df[target_col].isnull().all():
             logger.warning(f"Region {region} has no valid target values, skipping...")
+            print(f"❌ Region {region}: no valid target values in column '{target_col}'")
+            print(f"🔍 DEBUG: Target column exists: {target_col in train_df.columns}")
+            if target_col in train_df.columns:
+                print(f"🔍 DEBUG: Target column null count: {train_df[target_col].isnull().sum()}/{len(train_df)}")
             return None
         train_df = train_df.dropna(subset=[target_col])
+        print(f"🔍 DEBUG: Train data shape after dropping target NaNs: {train_df.shape}")
+        
         # Drop rows with NA in X variables for both train and test
+        train_df_before_x_dropna = train_df.copy()
         train_df = train_df.dropna(subset=x_columns)
         test_df = test_df.dropna(subset=x_columns)
+        print(f"🔍 DEBUG: Train data shape after dropping feature NaNs: {train_df.shape}")
+        print(f"🔍 DEBUG: Test data shape after dropping feature NaNs: {test_df.shape}")
+        
+        # Debug missing data in features
+        if len(train_df) == 0:
+            print(f"🔍 DEBUG: All training data was removed by feature NaN filtering!")
+            for col in x_columns:
+                missing_count = train_df_before_x_dropna[col].isnull().sum()
+                print(f"🔍 DEBUG: Feature '{col}' missing count: {missing_count}/{len(train_df_before_x_dropna)}")
+        
         if len(train_df) < 12:
             logger.warning(f"Region {region} has insufficient training data after removing NaN targets or features, skipping...")
+            print(f"❌ Region {region}: insufficient training data after NaN removal ({len(train_df)} rows < 12)")
             return None
         X_train = train_df[x_columns]
         y_train = train_df[target_col]
         X_test = test_df[x_columns]
+        
+        print(f"🔍 DEBUG: Final X_train shape: {X_train.shape}")
+        print(f"🔍 DEBUG: Final y_train shape: {y_train.shape}")
+        print(f"🔍 DEBUG: Final X_test shape: {X_test.shape}")
+        
         if len(x_columns) < 3:
             logger.warning(f"Region {region} has too few features ({len(x_columns)}), skipping...")
+            print(f"❌ Region {region}: too few features ({len(x_columns)} < 3)")
             return None
+            
         scaler = RobustScaler()
+        print(f"🔍 DEBUG: About to fit RobustScaler with X_train shape: {X_train.shape}")
         X_train_scaled = scaler.fit_transform(X_train)
         X_test_scaled = scaler.transform(X_test)
         models = {
@@ -751,25 +792,29 @@ def generateFinalOutput(merged_df, cfg):
             mask = (final_df[cfg.id_columns[0]] == region) & (final_df[cfg.date_col].isin(last_12_months))
             final_df.loc[mask, [cfg.target_column, cfg.hpi1y_fwd_col, cfg.usa_hpi12mF_col, cfg.usa_hpa12mF_col]] = np.nan
     
-    # Select and order the required columns
+    # Select and order the required columns - EXACTLY these columns in this exact order
     required_columns = [
-        cfg.date_col,
-        cfg.id_columns[0],  # rcode
-        cfg.id_columns[1],  # cs_name
+        'Year_Month_Day',
+        'rcode',
+        'cs_name',
         'tag',
-        cfg.usa_projection_col,  # USA projection
-        cfg.msa_projection_col,  # MSA projection
-        cfg.msa_hpi_col,
-        cfg.msa_hpa12m_col,
-        cfg.target_column,
-        cfg.hpi1y_fwd_col,
-        cfg.usa_hpi12mF_col,
-        cfg.usa_hpa12mF_col,
+        'ProjectedHPA1YFwd_USABaseline',
+        'ProjectedHPA1YFwd_MSABaseline',
         'ProjectedHPA1YFwd_MSA',
+        'HPI',
+        'hpa12m',
+        'HPA1Yfwd',
+        'USA_HPA1Yfwd',
         'Approach3_MSA_HPA1YrFwd'
     ]
     
-    # Select only the required columns
+    # Verify all required columns exist, if not create them as NaN
+    for col in required_columns:
+        if col not in final_df.columns:
+            logger.warning(f"Column '{col}' not found in data, creating with NaN values")
+            final_df[col] = np.nan
+    
+    # Select only the required columns in the exact order specified
     final_df = final_df[required_columns]
     
     # Convert date to YYYY-MM-DD format
