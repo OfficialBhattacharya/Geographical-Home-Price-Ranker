@@ -1086,19 +1086,64 @@ def run_test_with_rcodes(
     # Run pipeline
     merged_df, unique_regions = loadAndMergeData(cfg)
     
-    # Filter to only include specified rcodes
-    available_rcodes = merged_df[cfg.rcode_col].unique()
-    valid_rcodes = [r for r in rcodes_list if r in available_rcodes]
-    missing_rcodes = [r for r in rcodes_list if r not in available_rcodes]
+    # Debug: Print information about the data and rcodes
+    print(f"\n🔍 DEBUG: Rcode column name: '{cfg.rcode_col}'")
+    print(f"🔍 DEBUG: Data shape after merge: {merged_df.shape}")
+    print(f"🔍 DEBUG: Columns in merged data: {list(merged_df.columns)}")
+    
+    # Get available rcodes and clean them
+    available_rcodes_raw = merged_df[cfg.rcode_col].unique()
+    available_rcodes = [str(r).strip() for r in available_rcodes_raw if pd.notna(r)]
+    
+    print(f"🔍 DEBUG: Total available rcodes: {len(available_rcodes)}")
+    print(f"🔍 DEBUG: Sample available rcodes: {available_rcodes[:10]}")
+    print(f"🔍 DEBUG: Requested rcodes: {rcodes_list}")
+    
+    # Clean requested rcodes and try different matching approaches
+    rcodes_list_clean = [str(r).strip() for r in rcodes_list]
+    
+    # Try exact matching first
+    valid_rcodes = [r for r in rcodes_list_clean if r in available_rcodes]
+    missing_rcodes = [r for r in rcodes_list_clean if r not in available_rcodes]
+    
+    print(f"🔍 DEBUG: Exact matches found: {valid_rcodes}")
+    print(f"🔍 DEBUG: Missing from exact match: {missing_rcodes}")
+    
+    # If no exact matches, try case-insensitive matching
+    if not valid_rcodes and missing_rcodes:
+        print("🔍 DEBUG: No exact matches found, trying case-insensitive matching...")
+        available_rcodes_lower = {r.lower(): r for r in available_rcodes}
+        
+        for requested_rcode in rcodes_list_clean:
+            if requested_rcode.lower() in available_rcodes_lower:
+                actual_rcode = available_rcodes_lower[requested_rcode.lower()]
+                valid_rcodes.append(actual_rcode)
+                missing_rcodes.remove(requested_rcode)
+                print(f"🔍 DEBUG: Found case-insensitive match: '{requested_rcode}' -> '{actual_rcode}'")
+    
+    # If still no matches, try partial matching
+    if not valid_rcodes and missing_rcodes:
+        print("🔍 DEBUG: No case-insensitive matches found, trying partial matching...")
+        for requested_rcode in rcodes_list_clean.copy():
+            partial_matches = [r for r in available_rcodes if requested_rcode in r or r in requested_rcode]
+            if partial_matches:
+                print(f"🔍 DEBUG: Partial matches for '{requested_rcode}': {partial_matches[:5]}")
+                # Use the first partial match
+                actual_rcode = partial_matches[0]
+                valid_rcodes.append(actual_rcode)
+                missing_rcodes.remove(requested_rcode)
+                print(f"🔍 DEBUG: Using partial match: '{requested_rcode}' -> '{actual_rcode}'")
     
     if missing_rcodes:
         logger.warning(f"The following rcodes were not found in the data: {missing_rcodes}")
         print(f"⚠️  The following rcodes were not found in the data: {missing_rcodes}")
+        print(f"⚠️  Available rcodes sample: {available_rcodes[:20]}")
     
     if not valid_rcodes:
-        error_msg = f"❌ None of the specified rcodes were found in the data. Available rcodes: {list(available_rcodes)[:10]}..."
+        error_msg = f"❌ None of the specified rcodes were found in the data."
         logger.error(error_msg)
         print(error_msg)
+        print(f"📋 All available rcodes ({len(available_rcodes)}): {available_rcodes}")
         raise ValueError("No valid rcodes found in data")
     
     # Filter the merged dataframe to only include specified regions
