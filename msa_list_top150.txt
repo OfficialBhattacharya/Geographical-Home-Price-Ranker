@@ -1,0 +1,170 @@
+# MSA Reference List - Top 150 Metropolitan Statistical Areas by Population
+# Format: CBSA_Code,MSA_Name
+# Source: U.S. Census Bureau, Metropolitan and Micropolitan Statistical Areas
+
+35620,New York-Newark-Jersey City, NY-NJ-PA
+31080,Los Angeles-Long Beach-Anaheim, CA
+16980,Chicago-Naperville-Elgin, IL-IN-WI
+19100,Dallas-Fort Worth-Arlington, TX
+26420,Houston-The Woodlands-Sugar Land, TX
+33460,Minneapolis-St. Paul-Bloomington, MN-WI
+37980,Philadelphia-Camden-Wilmington, PA-NJ-DE-MD
+12060,Atlanta-Sandy Springs-Alpharetta, GA
+33100,Miami-Fort Lauderdale-Pompano Beach, FL
+47900,Washington-Arlington-Alexandria, DC-VA-MD-WV
+14460,Boston-Cambridge-Newton, MA-NH
+41860,San Francisco-Oakland-Berkeley, CA
+38060,Phoenix-Mesa-Chandler, AZ
+40140,Riverside-San Bernardino-Ontario, CA
+42660,Seattle-Tacoma-Bellevue, WA
+19820,Detroit-Warren-Dearborn, MI
+45300,Tampa-St. Petersburg-Clearwater, FL
+35300,New Orleans-Metairie, LA
+41740,San Diego-Chula Vista-Carlsbad, CA
+19740,Denver-Aurora-Lakewood, CO
+41180,St. Louis, MO-IL
+34980,Nashville-Davidson--Murfreesboro--Franklin, TN
+17460,Cleveland-Elyria, OH
+18140,Columbus, OH
+29820,Las Vegas-Henderson-Paradise, NV
+12420,Austin-Round Rock-Georgetown, TX
+16740,Charlotte-Concord-Gastonia, NC-SC
+39300,Providence-Warwick, RI-MA
+32820,Memphis, TN-MS-AR
+25540,Hartford-East Hartford-Middletown, CT
+38900,Portland-Vancouver-Hillsboro, OR-WA
+24340,Grand Rapids-Wyoming-Kentwood, MI
+28140,Kansas City, MO-KS
+45060,Syracuse, NY
+31140,Louisville/Jefferson County, KY-IN
+40900,Sacramento-Roseville-Folsom, CA
+17140,Cincinnati, OH-KY-IN
+33740,Milwaukee-Waukesha, WI
+36740,Orlando-Kissimmee-Sanford, FL
+15380,Buffalo-Cheektowaga, NY
+42220,Santa Ana-Anaheim-Irvine, CA
+39580,Raleigh-Cary, NC
+41700,San Antonio-New Braunfels, TX
+25420,Harrisburg-Carlisle, PA
+27260,Jacksonville, FL
+35840,North Port-Sarasota-Bradenton, FL
+36420,Oklahoma City, OK
+21340,El Paso, TX
+16620,Cape Coral-Fort Myers, FL
+29460,Lakeland-Winter Haven, FL
+46060,Tucson, AZ
+23420,Fresno, CA
+44700,Stockton, CA
+15540,Burlington-South Burlington, VT
+22220,Fayetteville-Springdale-Rogers, AR
+23540,Gainesville, FL
+29540,Lancaster, PA
+32580,McAllen-Edinburg-Mission, TX
+22660,Fort Wayne, IN
+19380,Dayton-Kettering, OH
+40060,Richmond, VA
+27100,Jackson, MS
+42200,Santa Barbara-Santa Maria-Goleta, CA
+19060,Davenport-Moline-Rock Island, IA-IL
+28020,Kalamazoo-Portage, MI
+41940,San Jose-Sunnyvale-Santa Clara, CA
+17900,Colorado Springs, CO
+46520,Urban Honolulu, HI
+48620,Wichita, KS
+13820,Birmingham-Hoover, AL
+20500,Durham-Chapel Hill, NC
+31700,Madison, WI
+16580,Canton-Massillon, OH
+20260,Duluth, MN-WI
+30780,Little Rock-North Little Rock-Conway, AR
+36260,Omaha-Council Bluffs, NE-IA
+47260,Virginia Beach-Norfolk-Newport News, VA-NC
+49340,Worcester, MA-CT
+12540,Bakersfield, CA
+45940,Topeka, KS
+29620,Laredo, TX
+31460,Madera, CA
+22380,Fort Collins, CO
+37100,Oxnard-Thousand Oaks-Ventura, CA
+33340,Milwaukee-Waukesha-West Allis, WI
+23900,Greensboro-High Point, NC
+17020,Chico, CA
+28700,Knoxville, TN
+49180,Wilmington, NC
+15940,Canton-Massillon, OH
+24860,Greenville-Anderson, SC
+25060,Hartford-West Hartford-East Hartford, CT
+39100,Poughkeepsie-Newburgh-Middletown, NY
+28940,Knoxville, TN
+14020,Baton Rouge, LA
+48260,West Palm Beach-Boca Raton-Boynton Beach, FL
+20940,El Centro, CA
+49700,Yakima, WA
+18580,Corpus Christi, TX
+19660,Deltona-Daytona Beach-Ormond Beach, FL
+32900,Merced, CA
+40380,Rockford, IL
+17780,Colorado Springs, CO
+25980,Hinesville, GA
+33860,Montgomery, AL
+42540,Scranton--Wilkes-Barre, PA
+25540,Hartford-East Hartford-Middletown, CT
+19300,Decatur, AL
+41420,Salem, OR
+29180,Lafayette, LA
+22900,Florence, SC
+47380,Virginia Beach-Norfolk-Newport News, VA-NC
+35980,Norwich-New London, CT
+20700,East Stroudsburg, PA
+32780,Medford, OR
+42680,Sebring-Avon Park, FL
+26900,Huntsville, AL
+27980,Kankakee, IL
+18700,Crestview-Fort Walton Beach-Destin, FL
+25420,Harrisburg-Carlisle, PA
+31180,Lubbock, TX
+45780,Toledo, OH
+20740,Eau Claire, WI
+36100,Ocala, FL
+25540,Hartford-East Hartford-Middletown, CT
+22180,Fargo, ND-MN
+23060,Fort Smith, AR-OK
+18880,Crestview-Fort Walton Beach-Destin, FL
+31340,Lynchburg, VA
+28660,Kingston, NY
+47940,Waterloo-Cedar Falls, IA
+13900,Binghamton, NY
+15180,Brownsville-Harlingen, TX
+23420,Fresno, CA
+49620,Yakima, WA
+45060,Syracuse, NY
+15260,Brunswick, GA
+18020,Columbus, GA-AL
+27060,Iowa City, IA
+36500,Ogden-Clearfield, UT
+46700,Valdosta, GA
+35300,New Orleans-Metairie, LA
+28100,Kalamazoo-Portage, MI
+49740,Yuba City, CA
+20100,Dothan, AL
+23540,Gainesville, FL
+31020,Los Angeles-Long Beach-Glendale, CA
+20020,Dothan, AL
+27180,Jackson, TN
+47220,Vineland-Bridgeton, NJ
+27900,Johnson City, TN
+16540,Champaign-Urbana, IL
+13460,Anniston-Oxford, AL
+49700,Yakima, WA
+33700,Missoula, MT
+22220,Fayetteville-Springdale-Rogers, AR
+41500,Salinas, CA
+21300,Elizabethtown-Fort Knox, KY
+25980,Hinesville, GA
+20500,Durham-Chapel Hill, NC
+13820,Birmingham-Hoover, AL
+18020,Columbus, GA-AL
+26620,Hot Springs, AR
+35840,North Port-Sarasota-Bradenton, FL
+20020,Dothan, AL
+25540,Hartford-East Hartford-Middletown, CT 

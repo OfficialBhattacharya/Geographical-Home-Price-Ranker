@@ -1,0 +1,34 @@
+# FRED MSA-Level Data Series Mappings
+# Replace [CBSA] with 5-digit CBSA code (e.g., 35620)
+# Limited availability - only these metrics exist at MSA level
+
+# Core Metrics
+UnemploymentRate: [CBSA]UR
+HomePriceIndex: ATNHPIUS[CBSA]Q
+MedianDaysonMarket: MEDDAYONMAR[CBSA]
+MedianListingPriceperSquareFeet: MEDLISPRIPERSQUFEE[CBSA]
+
+# Not Available at MSA Level
+AverageSalesPrice_NewHousesSold: NO_MSA_EQUIV
+AverageSalesPrice: NO_MSA_EQUIV
+NewOneFamilyHousesSold: NO_MSA_EQUIV
+MonthlySupplyofNewHouses: NO_MSA_EQUIV
+MedianSalesPriceofHousesSold: NO_MSA_EQUIV
+HomeownershipRate: NO_MSA_EQUIV
+TotalShipmentsofNewHomes: NO_MSA_EQUIV
+EconomicPolicyUncertaintyIndex: NO_MSA_EQUIV
+VacantHousingUnits_1: NO_MSA_EQUIV
+OccupiedHousingUnits: NO_MSA_EQUIV
+VacantHousingUnits_2: NO_MSA_EQUIV
+VacantforOtherReasons: NO_MSA_EQUIV
+RenterOccupiedHousingUnits: NO_MSA_EQUIV
+VacantHousingUnits_NotYetOccupied: NO_MSA_EQUIV
+VacantHousingUnits_forSale: NO_MSA_EQUIV
+TotalHousingUnits: NO_MSA_EQUIV
+
+# Notes:
+# 1. HPI series (ATNHPIUS[CBSA]Q) is quarterly - interpolate to monthly
+# 2. Realtor.com data (MEDDAYONMAR*, MEDLISPRIPERSQUFEE*) has coverage gaps
+# 3. Unemployment series are monthly and seasonally adjusted
+# 4. Limited MSA coverage compared to state-level data
+# 5. Coverage varies significantly by MSA size and region 

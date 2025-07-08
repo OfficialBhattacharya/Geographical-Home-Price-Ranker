@@ -37,6 +37,11 @@ def run_pipeline():
                 "name": "State-level data enhancement", 
                 "command": ["python", "stateDataEnhancer.py"],
                 "description": "Fetches and processes state-level economic indicators"
+            },
+            {
+                "name": "MSA-level data enhancement", 
+                "command": ["python", "batch_msa_scraper.py"],
+                "description": "Fetches and processes MSA-level economic indicators for top 150 metropolitan areas"
             }
         ]
         
@@ -162,10 +167,14 @@ This script runs the complete FRED data processing pipeline in sequence:
 1. Downloads FRED series data from the Federal Reserve API
 2. Aggregates all CSV files into a unified monthly dataset  
 3. Cleans and interpolates missing values
+4. Enhances dataset with state-level economic indicators
+5. Enhances dataset with MSA-level economic indicators (top 150 metros)
 
 Prerequisites:
 - config.yaml file with your FRED API key and paths
 - allFredSeries.txt file with FRED series to download
+- state_level_fred_mappings.txt for state-level series patterns
+- msa_list_top150.txt and msa_level_fred_mappings.txt for MSA-level processing
 - Required Python packages: pandas, numpy, requests, pyyaml
 
 Usage:
