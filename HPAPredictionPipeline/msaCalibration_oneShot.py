@@ -386,17 +386,11 @@ def loadAndMergeData(cfg):
         msa_new_df = msa_new_df[(msa_new_df[cfg.date_col] >= start_dt) & 
                                (msa_new_df[cfg.date_col] <= end_dt)].copy()
         
-        # Calculate current USA HPI and HPA by shifting forward-looking columns
-        msa_baseline_df[cfg.usa_hpi_col] = msa_baseline_df.groupby(cfg.id_columns[0])[cfg.usa_hpi12mF_col].shift(-12)
-        msa_baseline_df[cfg.usa_hpa12m_col] = msa_baseline_df.groupby(cfg.id_columns[0])[cfg.usa_hpa12mF_col].shift(-12)
-        
-        # Select required columns from MSA baseline
+        # Select required columns from MSA baseline (removed usa_hpi_col and usa_hpa12m_col as they're not needed in final output)
         required_baseline_cols = cfg.id_columns + [cfg.date_col] + cfg.msa_baseline_columns + [
             cfg.target_column,
             cfg.msa_hpi_col,                # MSA HPI column
             cfg.msa_hpa12m_col,             # MSA HPA12M column
-            cfg.usa_hpi_col,
-            cfg.usa_hpa12m_col,
             cfg.usa_hpi12mF_col,
             cfg.usa_hpa12mF_col,
             cfg.usa_projection_col,         # USA projection column
@@ -791,7 +785,7 @@ def fillMissingDataByRegion(df, cfg):
     print("Filling missing data using growth/decay rates and monthly averages...")
     df_filled = df.copy()
     exclude_cols = [cfg.date_col, cfg.rcode_col, cfg.cs_name_col]
-    user_numeric_cols = [col for col in [cfg.msa_hpi_col, cfg.msa_hpa12m_col, cfg.usa_hpi_col, cfg.usa_hpa12m_col, cfg.usa_hpi12mF_col, cfg.usa_hpa12mF_col, cfg.usa_projection_col, cfg.msa_projection_col] + cfg.msa_new_columns if col in df_filled.columns and pd.api.types.is_numeric_dtype(df_filled[col])]
+    user_numeric_cols = [col for col in [cfg.msa_hpi_col, cfg.msa_hpa12m_col, cfg.usa_hpi12mF_col, cfg.usa_hpa12mF_col, cfg.usa_projection_col, cfg.msa_projection_col] + cfg.msa_new_columns if col in df_filled.columns and pd.api.types.is_numeric_dtype(df_filled[col])]
     numeric_cols = [col for col in user_numeric_cols if col not in exclude_cols]
     print(f"Processing {len(numeric_cols)} numeric columns for missing data...")
     df_filled = df_filled.sort_values([cfg.rcode_col, cfg.date_col])
@@ -886,8 +880,6 @@ def run_with_custom_paths(
     target_column="HPA1Yfwd",
     msa_hpi_col="HPI",
     msa_hpa12m_col="hpa12m",
-    usa_hpi_col="USA_HPI",              # USA HPI column from baseline
-    usa_hpa12m_col="USA_HPA12M",        # USA HPA12M column from baseline
     usa_hpi12mF_col="USA_HPI1Yfwd",
     usa_hpa12mF_col="USA_HPA1Yfwd",
     hpi1y_fwd_col="HPI1Y_fwd",
@@ -925,8 +917,6 @@ def run_with_custom_paths(
             self.target_column = target_column
             self.msa_hpi_col = msa_hpi_col
             self.msa_hpa12m_col = msa_hpa12m_col
-            self.usa_hpi_col = usa_hpi_col
-            self.usa_hpa12m_col = usa_hpa12m_col
             self.usa_hpi12mF_col = usa_hpi12mF_col
             self.usa_hpa12mF_col = usa_hpa12mF_col
             self.hpi1y_fwd_col = hpi1y_fwd_col
@@ -994,6 +984,175 @@ def run_with_custom_paths(
         return final_output
     else:
         logger.error("No MSA regions were successfully processed")
+        return None
+
+def run_test_with_rcodes(
+    rcodes_list,
+    msa_baseline_path,
+    msa_new_data_path,
+    output_path,
+    date_col="Year_Month_Day",
+    id_columns=["rcode", "cs_name"],
+    msa_baseline_columns=[],
+    target_column="HPA1Yfwd",
+    msa_hpi_col="HPI",
+    msa_hpa12m_col="hpa12m",
+    usa_hpi12mF_col="USA_HPI1Yfwd",
+    usa_hpa12mF_col="USA_HPA1Yfwd",
+    hpi1y_fwd_col="HPI1Y_fwd",
+    usa_projection_col="ProjectedHPA1YFwd_USABaseline",
+    msa_projection_col="ProjectedHPA1YFwd_MSABaseline",
+    msa_new_columns=[],
+    start_date="1990-01-01",
+    end_date=None,
+    all_models_list=None,
+    all_model_params=None,
+    grid_specs=None,
+    title_specs=None
+):
+    """
+    Run the MSA Calibration pipeline with specific region codes (rcodes) only.
+    
+    Parameters:
+    - rcodes_list: List of specific region codes to process
+    - Other parameters: Same as run_with_custom_paths()
+    
+    Returns:
+    - final_output: DataFrame with results for specified regions only
+    """
+    global REGION_RESULTS
+    logger.info(f"Running test with specific rcodes: {rcodes_list}")
+    print(f"Running test with specific rcodes: {rcodes_list}")
+
+    # Validate that end_date is provided
+    if end_date is None:
+        raise ValueError("end_date parameter is required. Please provide a valid date in YYYY-MM-DD format.")
+
+    # Validate rcodes_list
+    if not rcodes_list or len(rcodes_list) == 0:
+        raise ValueError("rcodes_list parameter is required and must contain at least one region code.")
+
+    # Set up config (same as run_with_custom_paths)
+    class CustomCFG:
+        def __init__(self):
+            self.msa_baseline_path = msa_baseline_path
+            self.msa_new_data_path = msa_new_data_path
+            self.output_path = output_path
+            self.date_col = date_col
+            self.id_columns = id_columns
+            self.rcode_col = id_columns[0]  # First ID column is rcode
+            self.cs_name_col = id_columns[1]  # Second ID column is cs_name
+            self.msa_baseline_columns = msa_baseline_columns
+            self.target_column = target_column
+            self.msa_hpi_col = msa_hpi_col
+            self.msa_hpa12m_col = msa_hpa12m_col
+            self.usa_hpi12mF_col = usa_hpi12mF_col
+            self.usa_hpa12mF_col = usa_hpa12mF_col
+            self.hpi1y_fwd_col = hpi1y_fwd_col
+            self.usa_projection_col = usa_projection_col
+            self.msa_projection_col = msa_projection_col
+            self.msa_new_columns = msa_new_columns
+            self.start_date = start_date
+            self.end_date = end_date
+            self.AllModelsList = all_models_list or [
+                'Ridge',
+                'RandomForest',
+                'XGBoost'
+            ]
+            self.AllModelParams = all_model_params or {
+                'Ridge': {'alpha': [0.1, 1.0, 10.0]},
+                'RandomForest': {'n_estimators': [100, 200], 'max_depth': [10, 20, None]},
+                'XGBoost': {'n_estimators': [100, 200], 'max_depth': [6, 10], 'learning_rate': [0.01, 0.1]}
+            }
+            self.grid_specs = grid_specs or {
+                'visible': True,
+                'which': 'both',
+                'linestyle': '--',
+                'color': 'lightgrey',
+                'linewidth': 0.75
+            }
+            self.title_specs = title_specs or {
+                'fontsize': 9,
+                'fontweight': 'bold',
+                'color': '#992600',
+            }
+            # Additional attributes needed for data processing
+            self.hpi_col = msa_hpi_col  # Alias for msa_hpi_col
+            self.hpa12m_col = msa_hpa12m_col  # Alias for msa_hpa12m_col
+            self.additional_features = []  # Empty list for additional features
+    
+    cfg = CustomCFG()
+
+    # Run pipeline
+    merged_df, unique_regions = loadAndMergeData(cfg)
+    
+    # Filter to only include specified rcodes
+    available_rcodes = merged_df[cfg.rcode_col].unique()
+    valid_rcodes = [r for r in rcodes_list if r in available_rcodes]
+    missing_rcodes = [r for r in rcodes_list if r not in available_rcodes]
+    
+    if missing_rcodes:
+        logger.warning(f"The following rcodes were not found in the data: {missing_rcodes}")
+        print(f"⚠️  The following rcodes were not found in the data: {missing_rcodes}")
+    
+    if not valid_rcodes:
+        error_msg = f"❌ None of the specified rcodes were found in the data. Available rcodes: {list(available_rcodes)[:10]}..."
+        logger.error(error_msg)
+        print(error_msg)
+        raise ValueError("No valid rcodes found in data")
+    
+    # Filter the merged dataframe to only include specified regions
+    merged_df = merged_df[merged_df[cfg.rcode_col].isin(valid_rcodes)].copy()
+    unique_regions = valid_rcodes
+    
+    logger.info(f"Processing {len(valid_rcodes)} specified MSA regions out of {len(rcodes_list)} requested")
+    print(f"✓ Processing {len(valid_rcodes)} specified MSA regions out of {len(rcodes_list)} requested")
+    
+    # Fill missing data by region
+    merged_df = fillMissingDataByRegion(merged_df, cfg)
+    
+    # Create forward-looking target variables
+    merged_df = createForwardLookingVariables(merged_df, cfg)
+    
+    merged_df = createTrainTestTags(merged_df, cfg)
+
+    processed_count = 0
+    skipped_count = 0
+    REGION_RESULTS = {}
+    
+    print(f"\nProcessing {len(unique_regions)} specified MSA regions...")
+    
+    for i, region in enumerate(unique_regions, 1):
+        print(f"\n[{i}/{len(unique_regions)}] Processing MSA region: {region}")
+        region_df = merged_df[merged_df[cfg.id_columns[0]] == region].copy()
+        region_results = processRegionMSA(region, region_df, cfg, target_col=cfg.target_column)
+        REGION_RESULTS[region] = region_results
+        if region_results is not None:
+            processed_count += 1
+        else:
+            skipped_count += 1
+
+    print(f"\n{'='*60}")
+    print("RCODE-SPECIFIC PROCESSING COMPLETE")
+    print(f"{'='*60}")
+    print(f"✓ Successfully processed: {processed_count} MSA regions")
+    print(f"⚠️  Skipped: {skipped_count} MSA regions")
+    print(f"📊 Total specified regions: {len(unique_regions)}")
+
+    if processed_count > 0:
+        final_output = generateFinalOutput(merged_df, cfg)
+        final_output.to_csv(cfg.output_path, index=False)
+        logger.info(f"Results saved to: {cfg.output_path}")
+        
+        print(f"\nResults saved to: {cfg.output_path}")
+        print(f"\nOutput columns: {list(final_output.columns)}")
+        print(f"Output shape: {final_output.shape}")
+        print(f"Processed regions: {final_output[cfg.id_columns[0]].unique().tolist()}")
+        
+        return final_output
+    else:
+        logger.error("No specified MSA regions were successfully processed")
+        print("❌ No specified MSA regions were successfully processed")
         return None
 
 def main():
@@ -1141,8 +1300,7 @@ if __name__ == "__main__":
 #         target_column='HPA1Yfwd',
 #         msa_hpi_col='HPI',
 #         msa_hpa12m_col='hpa12m',
-#         usa_hpi_col='USA_HPI',
-#         usa_hpa12m_col='USA_HPA12M',
+
 #         usa_hpi12mF_col='USA_HPI1Yfwd',
 #         usa_hpa12mF_col='USA_HPA1Yfwd',
 #         hpi1y_fwd_col='HPI1Y_fwd',
@@ -1179,8 +1337,6 @@ result = run_with_custom_paths(
     target_column='HPA1Yfwd',
     msa_hpi_col='HPI',
     msa_hpa12m_col='hpa12m',
-    usa_hpi_col='USA_HPI',
-    usa_hpa12m_col='USA_HPA12M',
     usa_hpi12mF_col='USA_HPI1Yfwd',
     usa_hpa12mF_col='USA_HPA1Yfwd',
     hpi1y_fwd_col='HPI1Y_fwd',
@@ -1205,8 +1361,6 @@ result = run_test_with_rcodes(
     target_column='HPA1Yfwd',
     msa_hpi_col='HPI',
     msa_hpa12m_col='hpa12m',
-    usa_hpi_col='USA_HPI',
-    usa_hpa12m_col='USA_HPA12M',
     usa_hpi12mF_col='USA_HPI1Yfwd',
     usa_hpa12mF_col='USA_HPA1Yfwd',
     hpi1y_fwd_col='HPI1Y_fwd',
